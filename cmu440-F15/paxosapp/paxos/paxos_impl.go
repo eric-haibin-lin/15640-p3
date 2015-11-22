@@ -2,6 +2,7 @@ package paxos
 
 import (
 	"github.com/cmu440-F15/paxosapp/rpc/paxosrpc"
+	"errors"
 )
 
 type paxosNode struct {
@@ -20,19 +21,19 @@ func NewPaxosNode(myHostPort string, hostMap map[int]string, numNodes, srvId, nu
 }
 
 func (pn *paxosNode) GetNextProposalNumber(args *paxosrpc.ProposalNumberArgs, reply *paxosrpc.ProposalNumberReply) error {
-	return nil, errors.New("not implemented")
+	return errors.New("not implemented")
 }
 
 func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.ProposeReply) error {
-	return nil, errors.New("not implemented")
+	return errors.New("not implemented")
 }
 
 func (pn *paxosNode) GetValue(args *paxosrpc.GetValueArgs, reply *paxosrpc.GetValueReply) error {
-	return nil, errors.New("not implemented")
+	return errors.New("not implemented")
 }
 
 func (pn *paxosNode) RecvPrepare(args *paxosrpc.PrepareArgs, reply *paxosrpc.PrepareReply) error {
-	return nil, errors.New("not implemented")
+	return errors.New("not implemented")
 }
 
 func (pn *paxosNode) RecvAccept(args *paxosrpc.AcceptArgs, reply *paxosrpc.AcceptReply) error {
