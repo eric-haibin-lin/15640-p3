@@ -1,12 +1,20 @@
 package paxos
 
 import (
-	"github.com/cmu440-F15/paxosapp/rpc/paxosrpc"
 	"errors"
+	"fmt"
+	"github.com/cmu440-F15/paxosapp/rpc/paxosrpc"
+	"net"
+	"net/http"
+	"net/rpc"
 )
 
 type paxosNode struct {
 	// TODO: implement this!
+	myHostPort string
+	numNodes   int
+	srvId      int
+	hostMap    map[int]string
 }
 
 // NewPaxosNode creates a new PaxosNode. This function should return only when
@@ -17,6 +25,31 @@ type paxosNode struct {
 // of nodes in the ring, replace is a flag which indicates whether this node
 // is a replacement for a node which failed.
 func NewPaxosNode(myHostPort string, hostMap map[int]string, numNodes, srvId, numRetries int, replace bool) (PaxosNode, error) {
+	fmt.Println("myhostport is ", myHostPort, "Numnodes is ", numNodes, "srvid is ", srvId)
+
+	var a paxosrpc.RemotePaxosNode
+
+	node := paxosNode{}
+
+	node.myHostPort = myHostPort
+
+	listener, err := net.Listen("tcp", myHostPort)
+	if err != nil {
+		return nil, err
+	}
+
+	a = &node
+
+	err = rpc.RegisterName("PaxosNode", paxosrpc.Wrap(a))
+	if err != nil {
+		return nil, err
+	}
+
+	rpc.HandleHTTP()
+	go http.Serve(listener, nil)
+
+	fmt.Println("At least could listen")
+
 	return nil, errors.New("not implemented")
 }
 
