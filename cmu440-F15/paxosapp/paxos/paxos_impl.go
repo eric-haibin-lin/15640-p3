@@ -12,7 +12,6 @@ import (
 )
 
 type paxosNode struct {
-	// TODO: implement this!
 	myHostPort string
 	numNodes   int
 	srvId      int
@@ -34,7 +33,15 @@ type paxosNode struct {
 	/* Again, a temporary map which should be populated when prepare is called */
 	maxSeqNumSoFar map[string]int
 
+	/* Next seqNum for particular key. Strictly increasing per key per node */
+	nextSeqNumMap map[string]int 
+
+	
+	maxSeqNumSoFarLock *sync.Mutex
 	valuesMapLock *sync.Mutex
+	acceptedValuesMapLock *sync.Mutex
+	acceptedSeqNumMapLock *sync.Mutex
+	nextSeqNumMapLock *sync.Mutex
 }
 
 // NewPaxosNode creates a new PaxosNode. This function should return only when
@@ -62,8 +69,13 @@ func NewPaxosNode(myHostPort string, hostMap map[int]string, numNodes, srvId, nu
 	node.acceptedSeqNumMap = make(map[string]int)
 
 	node.maxSeqNumSoFar = make(map[string]int)
+	node.nextSeqNumMap = make(map[string]int)
 
 	node.valuesMapLock = &sync.Mutex{}
+	node.acceptedValuesMapLock = &sync.Mutex{}
+	node.acceptedSeqNumMapLock = &sync.Mutex{}
+	node.maxSeqNumSoFarLock = &sync.Mutex{}
+	node.nextSeqNumMapLock = &sync.Mutex{}
 
 	for k, v := range hostMap {
 		node.hostMap[k] = v
@@ -114,7 +126,15 @@ func NewPaxosNode(myHostPort string, hostMap map[int]string, numNodes, srvId, nu
 
 func (pn *paxosNode) GetNextProposalNumber(args *paxosrpc.ProposalNumberArgs, reply *paxosrpc.ProposalNumberReply) error {
 	fmt.Println("GetNextProposalNumber invoked on ", pn.srvId)
-	return errors.New("not implemented")
+	key := args.Key
+	// increase the nextNum for this key, append distinct srvId 
+	pn.nextSeqNumMapLock.Lock()
+	defer pn.nextSeqNumMapLock.Unlock()
+	pn.nextSeqNumMap[key] += 1
+	nextNum := pn.nextSeqNumMap[key]
+	nextNum = nextNum * 1000 + pn.srvId
+	reply.N = nextNum
+	return nil	
 }
 
 func prepare(pn *paxosNode, hostport string, key string, seqnum int, preparechan chan paxosrpc.PrepareReply) {
@@ -189,6 +209,7 @@ func commit(pn *paxosNode, hostport string, value interface{}, key string, commi
 
 	commitchan <- 1
 }
+
 func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.ProposeReply) error {
 	preparechan := make(chan paxosrpc.PrepareReply)
 	acceptchan := make(chan paxosrpc.AcceptReply)
@@ -284,15 +305,76 @@ func (pn *paxosNode) GetValue(args *paxosrpc.GetValueArgs, reply *paxosrpc.GetVa
 
 func (pn *paxosNode) RecvPrepare(args *paxosrpc.PrepareArgs, reply *paxosrpc.PrepareReply) error {
 	fmt.Println("In RecvPrepare of ", pn.myHostPort)
-	return errors.New("not implemented")
+	key := args.Key
+	num := args.N
+	
+	pn.maxSeqNumSoFarLock.Lock()
+	defer pn.maxSeqNumSoFarLock.Unlock()
+	maxNum := pn.maxSeqNumSoFar[key]
+	// reject proposal when its proposal number is not higher than the highest number it's ever seen
+	if maxNum > num {
+		fmt.Println("In RecvPrepare of ", pn.myHostPort, "rejected proposal:", key, num, "maxNum:", maxNum)
+		reply.Status = paxosrpc.Reject
+		return nil
+	} 
+	// promise proposal when its higher. return with the number and value accepted
+	fmt.Println("In RecvPrepare of ", pn.myHostPort, "accepted proposal:", key, num, "maxNum:", maxNum)
+	pn.acceptedValuesMapLock.Lock()
+	pn.acceptedSeqNumMapLock.Lock()
+	defer pn.acceptedValuesMapLock.Unlock()
+	defer pn.acceptedSeqNumMapLock.Unlock()
+	pn.maxSeqNumSoFar[key] = num
+	// fill reply with accepted seqNum and value. default is 0
+	reply.Status = paxosrpc.OK
+	reply.V_a = pn.acceptedValuesMap[key]
+	reply.N_a = pn.acceptedSeqNumMap[key]
+	return nil
 }
 
 func (pn *paxosNode) RecvAccept(args *paxosrpc.AcceptArgs, reply *paxosrpc.AcceptReply) error {
-	return errors.New("not implemented")
+	fmt.Println("In RecvAccept of ", pn.myHostPort)
+	key := args.Key
+	num := args.N
+	value := args.V
+
+	pn.maxSeqNumSoFarLock.Lock()
+	maxNum := pn.maxSeqNumSoFar[key]
+	defer pn.maxSeqNumSoFarLock.Unlock()
+	// reject proposal when its proposal number is not higher than the highest number it's ever seen
+	if maxNum > num {
+		fmt.Println("In RecvAccept of ", pn.myHostPort, "rejected proposal:", key, num, value, "maxNum:", maxNum)
+		reply.Status = paxosrpc.Reject
+		return nil
+	}
+	// accept proposal when its higher. update with the number and value accepted
+	fmt.Println("In RecvAccept of ", pn.myHostPort, "accepted proposal:", key, num, value)
+	pn.acceptedValuesMapLock.Lock()
+	pn.acceptedSeqNumMapLock.Lock()
+	defer pn.acceptedValuesMapLock.Unlock()
+	defer pn.acceptedSeqNumMapLock.Unlock()
+	pn.maxSeqNumSoFar[key] = num
+	pn.acceptedValuesMap[key] = value
+	pn.acceptedSeqNumMap[key] = num
+	reply.Status = paxosrpc.OK
+	return nil
 }
 
 func (pn *paxosNode) RecvCommit(args *paxosrpc.CommitArgs, reply *paxosrpc.CommitReply) error {
-	return errors.New("not implemented")
+	key := args.Key
+	value := args.V
+	
+	// update the value and clear the map for accepted value and number 
+	fmt.Println("In RecvCommit of ", pn.myHostPort, "committing:", key, value)
+	pn.valuesMapLock.Lock()
+	pn.acceptedValuesMapLock.Lock()
+	pn.acceptedSeqNumMapLock.Lock()
+	defer pn.valuesMapLock.Unlock()
+	defer pn.acceptedValuesMapLock.Unlock()
+	defer pn.acceptedSeqNumMapLock.Unlock()
+	pn.valuesMap[key] = value
+	delete(pn.acceptedValuesMap, key)
+	delete(pn.acceptedSeqNumMap, key)
+	return nil
 }
 
 func (pn *paxosNode) RecvReplaceServer(args *paxosrpc.ReplaceServerArgs, reply *paxosrpc.ReplaceServerReply) error {
