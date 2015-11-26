@@ -34,14 +34,13 @@ type paxosNode struct {
 	maxSeqNumSoFar map[string]int
 
 	/* Next seqNum for particular key. Strictly increasing per key per node */
-	nextSeqNumMap map[string]int 
+	nextSeqNumMap map[string]int
 
-	
-	maxSeqNumSoFarLock *sync.Mutex
-	valuesMapLock *sync.Mutex
+	maxSeqNumSoFarLock    *sync.Mutex
+	valuesMapLock         *sync.Mutex
 	acceptedValuesMapLock *sync.Mutex
 	acceptedSeqNumMapLock *sync.Mutex
-	nextSeqNumMapLock *sync.Mutex
+	nextSeqNumMapLock     *sync.Mutex
 }
 
 // NewPaxosNode creates a new PaxosNode. This function should return only when
@@ -127,14 +126,14 @@ func NewPaxosNode(myHostPort string, hostMap map[int]string, numNodes, srvId, nu
 func (pn *paxosNode) GetNextProposalNumber(args *paxosrpc.ProposalNumberArgs, reply *paxosrpc.ProposalNumberReply) error {
 	fmt.Println("GetNextProposalNumber invoked on ", pn.srvId)
 	key := args.Key
-	// increase the nextNum for this key, append distinct srvId 
+	// increase the nextNum for this key, append distinct srvId
 	pn.nextSeqNumMapLock.Lock()
 	defer pn.nextSeqNumMapLock.Unlock()
 	pn.nextSeqNumMap[key] += 1
 	nextNum := pn.nextSeqNumMap[key]
-	nextNum = nextNum * 1000 + pn.srvId
+	nextNum = nextNum*1000 + pn.srvId
 	reply.N = nextNum
-	return nil	
+	return nil
 }
 
 func prepare(pn *paxosNode, hostport string, key string, seqnum int, preparechan chan paxosrpc.PrepareReply) {
@@ -307,7 +306,7 @@ func (pn *paxosNode) RecvPrepare(args *paxosrpc.PrepareArgs, reply *paxosrpc.Pre
 	fmt.Println("In RecvPrepare of ", pn.myHostPort)
 	key := args.Key
 	num := args.N
-	
+
 	pn.maxSeqNumSoFarLock.Lock()
 	defer pn.maxSeqNumSoFarLock.Unlock()
 	maxNum := pn.maxSeqNumSoFar[key]
@@ -316,7 +315,7 @@ func (pn *paxosNode) RecvPrepare(args *paxosrpc.PrepareArgs, reply *paxosrpc.Pre
 		fmt.Println("In RecvPrepare of ", pn.myHostPort, "rejected proposal:", key, num, "maxNum:", maxNum)
 		reply.Status = paxosrpc.Reject
 		return nil
-	} 
+	}
 	// promise proposal when its higher. return with the number and value accepted
 	fmt.Println("In RecvPrepare of ", pn.myHostPort, "accepted proposal:", key, num, "maxNum:", maxNum)
 	pn.acceptedValuesMapLock.Lock()
@@ -362,8 +361,8 @@ func (pn *paxosNode) RecvAccept(args *paxosrpc.AcceptArgs, reply *paxosrpc.Accep
 func (pn *paxosNode) RecvCommit(args *paxosrpc.CommitArgs, reply *paxosrpc.CommitReply) error {
 	key := args.Key
 	value := args.V
-	
-	// update the value and clear the map for accepted value and number 
+
+	// update the value and clear the map for accepted value and number
 	fmt.Println("In RecvCommit of ", pn.myHostPort, "committing:", key, value)
 	pn.valuesMapLock.Lock()
 	pn.acceptedValuesMapLock.Lock()
