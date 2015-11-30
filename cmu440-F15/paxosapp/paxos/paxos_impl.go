@@ -1,6 +1,7 @@
 package paxos
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/cmu440-F15/paxosapp/rpc/paxosrpc"
@@ -9,7 +10,6 @@ import (
 	"net/rpc"
 	"sync"
 	"time"
-	"encoding/json"
 )
 
 type paxosNode struct {
@@ -120,14 +120,14 @@ func NewPaxosNode(myHostPort string, hostMap map[int]string, numNodes, srvId, nu
 		}
 		fmt.Println(myHostPort, " dialed ", v, " successfully")
 	}
-	
-	//get updated values map when it's a node for replacement 
+
+	//get updated values map when it's a node for replacement
 	if replace {
 		nextSrv := ""
 		for _, v := range hostMap {
 			//use the first entry in hostMap to retrieve the values map. do not send the request to the new node itself
 			if v != myHostPort {
-				nextSrv = v	
+				nextSrv = v
 				break
 			}
 		}
@@ -138,11 +138,33 @@ func NewPaxosNode(myHostPort string, hostMap map[int]string, numNodes, srvId, nu
 			fmt.Println(myHostPort, " couldn't dial", nextSrv, " (for ReplaceCatchup)")
 			return nil, err
 		}
-		err = dialer.Call("PaxosNode.RecvAccept", &args, &reply)
-		if err != nil{
-			fmt.Println("ERROR: Couldn't Dial RecvAccept on ", nextSrv)	
+		err = dialer.Call("PaxosNode.RecvReplaceCatchup", &args, &reply)
+		if err != nil {
+			fmt.Println("ERROR: Couldn't Dial RecvReplaceCatchup on ", nextSrv)
 		}
 		json.Unmarshal(reply.Data, node.valuesMap)
+
+		//now call RecvReplaceServer on each of the other nodes to inform them that
+		//I am now taking the place of the failed node
+
+		for _, v := range hostMap {
+			if v != myHostPort {
+				dialer, err := rpc.DialHTTP("tcp", v)
+				if err != nil {
+					fmt.Println(myHostPort, " couldn't dial", nextSrv, " (for RecvReplaceServer)")
+					return nil, err
+				}
+				args := paxosrpc.ReplaceServerArgs{}
+				reply := paxosrpc.ReplaceServerReply{}
+
+				args.SrvID = srvId
+				args.Hostport = myHostPort
+				err = dialer.Call("PaxosNode.RecvReplaceServer", &args, &reply)
+				if err != nil {
+					fmt.Println("ERROR: Couldn't Dial RecvReplaceServer on ", nextSrv)
+				}
+			}
+		}
 	}
 
 	return a, nil
@@ -234,14 +256,24 @@ func commit(pn *paxosNode, hostport string, value interface{}, key string, commi
 	commitchan <- 1
 }
 
+func wakeMeUpAfter15Seconds(preparechan chan paxosrpc.PrepareReply, acceptchan chan paxosrpc.AcceptReply,
+	commitchan chan int) {
+	time.Sleep(15 * time.Second)
+
+	close(preparechan)
+	close(acceptchan)
+	close(commitchan)
+}
 func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.ProposeReply) error {
-	preparechan := make(chan paxosrpc.PrepareReply)
-	acceptchan := make(chan paxosrpc.AcceptReply)
-	commitchan := make(chan int)
+	preparechan := make(chan paxosrpc.PrepareReply, 100)
+	acceptchan := make(chan paxosrpc.AcceptReply, 100)
+	commitchan := make(chan int, 100)
 
 	fmt.Println("In Propose of ", pn.srvId)
 
 	fmt.Println("Key is ", args.Key, ", V is ", args.V, " and N is ", args.N)
+
+	go wakeMeUpAfter15Seconds(preparechan, acceptchan, commitchan)
 
 	for _, v := range pn.hostMap {
 		fmt.Println("Will call Prepare on ", v)
@@ -254,7 +286,11 @@ func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.Propose
 	max_v := args.V
 
 	for i := 0; i < pn.numNodes; i++ {
-		ret := <-preparechan
+		ret, ok := <-preparechan
+		if !ok {
+			fmt.Println("Didn't finish prepare stage even after 15 seconds")
+			return errors.New("Didn't finish prepare stage even after 15 seconds")
+		}
 		if ret.Status == paxosrpc.OK {
 			okcount++
 			if ret.N_a != 0 && ret.N_a > max_n {
@@ -283,7 +319,11 @@ func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.Propose
 	okcount = 0
 
 	for i := 0; i < pn.numNodes; i++ {
-		ret := <-acceptchan
+		ret, ok := <-acceptchan
+		if !ok {
+			fmt.Println("Didn't finish accept stage even after 15 seconds")
+			return errors.New("Didn't finish accept stage even after 15 seconds")
+		}
 		if ret.Status == paxosrpc.OK {
 			okcount++
 		}
@@ -299,7 +339,11 @@ func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.Propose
 	}
 
 	for i := 0; i < pn.numNodes; i++ {
-		_ = <-commitchan
+		_, ok := <-commitchan
+		if !ok {
+			fmt.Println("Didn't finish commit stage even after 15 seconds")
+			return errors.New("Didn't finish commit stage even after 15 seconds")
+		}
 	}
 
 	reply.V = valueToPropose
@@ -402,14 +446,19 @@ func (pn *paxosNode) RecvCommit(args *paxosrpc.CommitArgs, reply *paxosrpc.Commi
 }
 
 func (pn *paxosNode) RecvReplaceServer(args *paxosrpc.ReplaceServerArgs, reply *paxosrpc.ReplaceServerReply) error {
-	return errors.New("not implemented")
+	fmt.Println("In ReplaceServer of ", pn.myHostPort)
+	fmt.Println("Some node is replacing the node with ID : ", args.SrvID)
+	fmt.Println("Its hostport is ", args.Hostport)
+
+	pn.hostMap[args.SrvID] = args.Hostport
+	return nil
 }
 
 func (pn *paxosNode) RecvReplaceCatchup(args *paxosrpc.ReplaceCatchupArgs, reply *paxosrpc.ReplaceCatchupReply) error {
 	pn.valuesMapLock.Lock()
 	defer pn.valuesMapLock.Unlock()
 	marshaledMap, err := json.Marshal(pn.valuesMap)
-	if err != nil{
+	if err != nil {
 		return err
 	}
 	reply.Data = marshaledMap
