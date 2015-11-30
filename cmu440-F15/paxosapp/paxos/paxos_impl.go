@@ -9,6 +9,7 @@ import (
 	"net/rpc"
 	"sync"
 	"time"
+	"encoding/json"
 )
 
 type paxosNode struct {
@@ -118,6 +119,30 @@ func NewPaxosNode(myHostPort string, hostMap map[int]string, numNodes, srvId, nu
 			}
 		}
 		fmt.Println(myHostPort, " dialed ", v, " successfully")
+	}
+	
+	//get updated values map when it's a node for replacement 
+	if replace {
+		nextSrv := ""
+		for _, v := range hostMap {
+			//use the first entry in hostMap to retrieve the values map. do not send the request to the new node itself
+			if v != myHostPort {
+				nextSrv = v	
+				break
+			}
+		}
+		args := paxosrpc.ReplaceCatchupArgs{}
+		reply := paxosrpc.ReplaceCatchupReply{}
+		dialer, err := rpc.DialHTTP("tcp", nextSrv)
+		if err != nil {
+			fmt.Println(myHostPort, " couldn't dial", nextSrv, " (for ReplaceCatchup)")
+			return nil, err
+		}
+		err = dialer.Call("PaxosNode.RecvAccept", &args, &reply)
+		if err != nil{
+			fmt.Println("ERROR: Couldn't Dial RecvAccept on ", nextSrv)	
+		}
+		json.Unmarshal(reply.Data, node.valuesMap)
 	}
 
 	return a, nil
@@ -381,7 +406,14 @@ func (pn *paxosNode) RecvReplaceServer(args *paxosrpc.ReplaceServerArgs, reply *
 }
 
 func (pn *paxosNode) RecvReplaceCatchup(args *paxosrpc.ReplaceCatchupArgs, reply *paxosrpc.ReplaceCatchupReply) error {
-	return errors.New("not implemented")
+	pn.valuesMapLock.Lock()
+	defer pn.valuesMapLock.Unlock()
+	marshaledMap, err := json.Marshal(pn.valuesMap)
+	if err != nil{
+		return err
+	}
+	reply.Data = marshaledMap
+	return nil
 }
 
 /*
