@@ -382,7 +382,9 @@ func (pn *paxosNode) RecvPrepare(args *paxosrpc.PrepareArgs, reply *paxosrpc.Pre
 	// reject proposal when its proposal number is not higher than the highest number it's ever seen
 	if maxNum > num {
 		fmt.Println("In RecvPrepare of ", pn.myHostPort, "rejected proposal:", key, num, "maxNum:", maxNum)
+		//return -1 for proposal promised
 		reply.Status = paxosrpc.Reject
+		reply.N_a = -1
 		return nil
 	}
 	// promise proposal when its higher. return with the number and value accepted
@@ -392,10 +394,15 @@ func (pn *paxosNode) RecvPrepare(args *paxosrpc.PrepareArgs, reply *paxosrpc.Pre
 	defer pn.acceptedValuesMapLock.Unlock()
 	defer pn.acceptedSeqNumMapLock.Unlock()
 	pn.maxSeqNumSoFar[key] = num
-	// fill reply with accepted seqNum and value. default is 0
+	// fill reply with accepted seqNum and value. default is -1
 	reply.Status = paxosrpc.OK
-	reply.V_a = pn.acceptedValuesMap[key]
-	reply.N_a = pn.acceptedSeqNumMap[key]
+	val, ok := pn.acceptedValuesMap[key]
+	if !ok {
+		reply.N_a = -1
+	} else {
+		reply.V_a = val
+		reply.N_a = pn.acceptedSeqNumMap[key]
+	}
 	return nil
 }
 
