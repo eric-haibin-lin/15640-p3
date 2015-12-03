@@ -142,14 +142,14 @@ func NewPaxosNode(myHostPort string, hostMap map[int]string, numNodes, srvId, nu
 		if err != nil {
 			fmt.Println("ERROR: Couldn't Dial RecvReplaceCatchup on ", nextSrv)
 		}
-		
+
 		var f interface{}
 		json.Unmarshal(reply.Data, &f)
 		node.valuesMapLock.Lock()
 		node.valuesMap = f.(map[string]interface{})
 		node.valuesMapLock.Unlock()
 
-		fmt.Println("Received values from peers. The value map has the following entries:");
+		fmt.Println("Received values from peers. The value map has the following entries:")
 		for k, v := range node.valuesMap {
 			fmt.Println(k, v)
 		}
@@ -382,6 +382,7 @@ func (pn *paxosNode) GetValue(args *paxosrpc.GetValueArgs, reply *paxosrpc.GetVa
 }
 
 func (pn *paxosNode) RecvPrepare(args *paxosrpc.PrepareArgs, reply *paxosrpc.PrepareReply) error {
+	defer fmt.Println("Leaving RecvPrepare of ", pn.myHostPort)
 	fmt.Println("In RecvPrepare of ", pn.myHostPort)
 	key := args.Key
 	num := args.N
@@ -417,6 +418,7 @@ func (pn *paxosNode) RecvPrepare(args *paxosrpc.PrepareArgs, reply *paxosrpc.Pre
 }
 
 func (pn *paxosNode) RecvAccept(args *paxosrpc.AcceptArgs, reply *paxosrpc.AcceptReply) error {
+	defer fmt.Println("Leaving RecvAccept of ", pn.myHostPort)
 	fmt.Println("In RecvAccept of ", pn.myHostPort)
 	key := args.Key
 	num := args.N
@@ -445,6 +447,7 @@ func (pn *paxosNode) RecvAccept(args *paxosrpc.AcceptArgs, reply *paxosrpc.Accep
 }
 
 func (pn *paxosNode) RecvCommit(args *paxosrpc.CommitArgs, reply *paxosrpc.CommitReply) error {
+	defer fmt.Println("Leaving RecvCommit of ", pn.myHostPort)
 	key := args.Key
 	value := args.V
 
