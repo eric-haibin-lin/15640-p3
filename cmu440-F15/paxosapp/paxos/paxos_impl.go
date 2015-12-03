@@ -366,6 +366,8 @@ func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.Propose
 }
 
 func (pn *paxosNode) GetValue(args *paxosrpc.GetValueArgs, reply *paxosrpc.GetValueReply) error {
+	fmt.Println("Inside GetValue of ", pn.myHostPort)
+	defer fmt.Println("Leaving GetValue of ", pn.myHostPort)
 	pn.valuesMapLock.Lock()
 	val, ok := pn.valuesMap[args.Key]
 
