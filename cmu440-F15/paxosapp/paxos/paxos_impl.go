@@ -142,7 +142,17 @@ func NewPaxosNode(myHostPort string, hostMap map[int]string, numNodes, srvId, nu
 		if err != nil {
 			fmt.Println("ERROR: Couldn't Dial RecvReplaceCatchup on ", nextSrv)
 		}
-		json.Unmarshal(reply.Data, node.valuesMap)
+		
+		var f interface{}
+		json.Unmarshal(reply.Data, &f)
+		node.valuesMapLock.Lock()
+		node.valuesMap = f.(map[string]interface{})
+		node.valuesMapLock.Unlock()
+
+		fmt.Println("Received values from peers. The value map has the following entries:");
+		for k, v := range node.valuesMap {
+			fmt.Println(k, v)
+		}
 
 		//now call RecvReplaceServer on each of the other nodes to inform them that
 		//I am now taking the place of the failed node
@@ -462,10 +472,13 @@ func (pn *paxosNode) RecvReplaceServer(args *paxosrpc.ReplaceServerArgs, reply *
 }
 
 func (pn *paxosNode) RecvReplaceCatchup(args *paxosrpc.ReplaceCatchupArgs, reply *paxosrpc.ReplaceCatchupReply) error {
+	fmt.Println("In RecvReplaceCatchup of ", pn.myHostPort)
 	pn.valuesMapLock.Lock()
 	defer pn.valuesMapLock.Unlock()
+	fmt.Println("Marshalling", len(pn.valuesMap), "values for RecvReplaceCatchup")
 	marshaledMap, err := json.Marshal(pn.valuesMap)
 	if err != nil {
+		fmt.Println("Failed to marshall", err)
 		return err
 	}
 	reply.Data = marshaledMap
