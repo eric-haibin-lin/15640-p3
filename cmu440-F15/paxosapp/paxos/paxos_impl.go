@@ -358,10 +358,6 @@ func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.Propose
 
 	reply.V = valueToPropose
 
-	pn.valuesMapLock.Lock()
-	pn.valuesMap[args.Key] = valueToPropose
-	pn.valuesMapLock.Unlock()
-
 	return nil
 }
 
