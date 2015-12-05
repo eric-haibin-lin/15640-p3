@@ -9,7 +9,7 @@ type clientNode struct {
 	
 }
 
-func NewClientNode(myHostPort string, hostMap map[int]string, numNodes, srvId, numRetries int, replace bool) (ClientNode, error) {
+func NewClientNode(myHostPort string, masterHost string) (ClientNode, error) {
 	return nil, errors.New("Not implemented yet.")
 }
 
