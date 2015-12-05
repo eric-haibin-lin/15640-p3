@@ -214,7 +214,7 @@ func prepare(pn *paxosNode, hostport string, key string, seqnum int, preparechan
 		return
 	}
 
-	fmt.Println("Got Prepare reply from ", hostport)
+	fmt.Println("Got Prepare reply from ", hostport, ". The N is ", reply.N_a, " and the value is ", reply.V_a)
 	preparechan <- reply
 }
 
@@ -240,6 +240,7 @@ func accept(pn *paxosNode, hostport string, value interface{}, key string, seqnu
 		return
 	}
 
+	fmt.Println("Got Accept reply from ", hostport, ". The Status is ", reply.Status)
 	acceptchan <- reply
 }
 
@@ -264,6 +265,7 @@ func commit(pn *paxosNode, hostport string, value interface{}, key string, commi
 		return
 	}
 
+	fmt.Println("Got Commit reply from ", hostport)
 	commitchan <- 1
 }
 
