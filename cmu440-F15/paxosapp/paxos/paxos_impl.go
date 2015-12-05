@@ -374,14 +374,13 @@ func (pn *paxosNode) GetValue(args *paxosrpc.GetValueArgs, reply *paxosrpc.GetVa
 	defer fmt.Println("Leaving GetValue of ", pn.myHostPort)
 	pn.valuesMapLock.Lock()
 	val, ok := pn.valuesMap[args.Key]
+	pn.valuesMapLock.Unlock()
 
 	if ok {
 		reply.V = val
 		reply.Status = paxosrpc.KeyFound
-		pn.valuesMapLock.Unlock()
 		return nil
 	}
-	pn.valuesMapLock.Unlock()
 
 	reply.Status = paxosrpc.KeyNotFound
 	return nil
@@ -396,6 +395,7 @@ func (pn *paxosNode) RecvPrepare(args *paxosrpc.PrepareArgs, reply *paxosrpc.Pre
 	pn.maxSeqNumSoFarLock.Lock()
 	maxNum := pn.maxSeqNumSoFar[key]
 	pn.maxSeqNumSoFarLock.Unlock()
+
 	// reject proposal when its proposal number is not higher than the highest number it's ever seen
 	if maxNum > num {
 		fmt.Println("In RecvPrepare of ", pn.myHostPort, "rejected proposal:", key, num, "maxNum:", maxNum)
@@ -410,6 +410,7 @@ func (pn *paxosNode) RecvPrepare(args *paxosrpc.PrepareArgs, reply *paxosrpc.Pre
 	pn.maxSeqNumSoFarLock.Lock()
 	pn.maxSeqNumSoFar[key] = num
 	pn.maxSeqNumSoFarLock.Unlock()
+
 	// fill reply with accepted seqNum and value. default is -1
 	reply.Status = paxosrpc.OK
 
@@ -440,6 +441,7 @@ func (pn *paxosNode) RecvAccept(args *paxosrpc.AcceptArgs, reply *paxosrpc.Accep
 	pn.maxSeqNumSoFarLock.Lock()
 	maxNum := pn.maxSeqNumSoFar[key]
 	pn.maxSeqNumSoFarLock.Unlock()
+
 	// reject proposal when its proposal number is not higher than the highest number it's ever seen
 	if maxNum > num {
 		fmt.Println("In RecvAccept of ", pn.myHostPort, "rejected proposal:", key, num, value, "maxNum:", maxNum)
@@ -497,10 +499,12 @@ func (pn *paxosNode) RecvReplaceServer(args *paxosrpc.ReplaceServerArgs, reply *
 
 func (pn *paxosNode) RecvReplaceCatchup(args *paxosrpc.ReplaceCatchupArgs, reply *paxosrpc.ReplaceCatchupReply) error {
 	fmt.Println("In RecvReplaceCatchup of ", pn.myHostPort)
+
 	pn.valuesMapLock.Lock()
-	defer pn.valuesMapLock.Unlock()
 	fmt.Println("Marshalling", len(pn.valuesMap), "values for RecvReplaceCatchup")
 	marshaledMap, err := json.Marshal(pn.valuesMap)
+	pn.valuesMapLock.Unlock()
+
 	if err != nil {
 		fmt.Println("Failed to marshall", err)
 		return err
