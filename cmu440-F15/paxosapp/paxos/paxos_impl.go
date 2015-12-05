@@ -294,7 +294,9 @@ func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.Propose
 	okcount := 0
 
 	max_n := 0
-	max_v := args.V
+	var max_v interface{}
+	max_v = args.V
+	//max_v := args.V
 
 	for i := 0; i < pn.numNodes; i++ {
 		ret, ok := <-preparechan
