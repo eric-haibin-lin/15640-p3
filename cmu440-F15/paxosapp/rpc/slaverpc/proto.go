@@ -17,5 +17,5 @@ type AppendArgs struct {
 }
 
 type AppendReply struct {
-	//Nothing to reply here
+	//Nothing to reply here 
 }

@@ -1,7 +1,7 @@
 package slaverpc
 
 type RemoteSlaveNode interface {
-	Put(args *AppendArgs, reply *AppendReply) error
+	Append(args *AppendArgs, reply *AppendReply) error
 	Get(args *GetArgs, reply *GetReply) error
 }
 
