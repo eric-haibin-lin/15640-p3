@@ -308,6 +308,9 @@ func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.Propose
 				max_n = ret.N_a
 				max_v = ret.V_a
 			}
+			if okcount >= ((pn.numNodes / 2) + 1) {
+				break
+			}
 		}
 	}
 
@@ -338,24 +341,29 @@ func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.Propose
 		if ret.Status == paxosrpc.OK {
 			okcount++
 		}
+		if okcount >= ((pn.numNodes / 2) + 1) {
+			break
+		}
 	}
 
 	if !(okcount >= ((pn.numNodes / 2) + 1)) {
 		return errors.New("Didn't get a majority in accept phase")
 	}
 
+	okcount = 0
 	for _, v := range pn.hostMap {
 		fmt.Println("Will call Commit on ", v)
 		go commit(pn, v, valueToPropose, args.Key, commitchan)
+
 	}
 
-	for i := 0; i < pn.numNodes; i++ {
+	/*for i := 0; i < pn.numNodes; i++ {
 		_, ok := <-commitchan
 		if !ok {
 			fmt.Println("Didn't finish commit stage even after 15 seconds")
 			return errors.New("Didn't finish commit stage even after 15 seconds")
 		}
-	}
+	}*/
 
 	reply.V = valueToPropose
 
