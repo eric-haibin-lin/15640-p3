@@ -354,16 +354,15 @@ func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.Propose
 	for _, v := range pn.hostMap {
 		fmt.Println("Will call Commit on ", v)
 		go commit(pn, v, valueToPropose, args.Key, commitchan)
-
 	}
 
-	/*for i := 0; i < pn.numNodes; i++ {
+	for i := 0; i < pn.numNodes; i++ {
 		_, ok := <-commitchan
 		if !ok {
 			fmt.Println("Didn't finish commit stage even after 15 seconds")
 			return errors.New("Didn't finish commit stage even after 15 seconds")
 		}
-	}*/
+	}
 
 	reply.V = valueToPropose
 
