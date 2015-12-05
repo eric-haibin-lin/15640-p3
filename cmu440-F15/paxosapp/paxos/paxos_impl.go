@@ -428,7 +428,7 @@ func (pn *paxosNode) RecvAccept(args *paxosrpc.AcceptArgs, reply *paxosrpc.Accep
 		reply.Status = paxosrpc.Reject
 		return nil
 	}
-	go func() {
+	go func(){
 		// accept proposal when its higher. update with the number and value accepted
 		fmt.Println("In RecvAccept of ", pn.myHostPort, "accepted proposal:", key, num, value)
 		pn.acceptedValuesMapLock.Lock()
@@ -439,8 +439,8 @@ func (pn *paxosNode) RecvAccept(args *paxosrpc.AcceptArgs, reply *paxosrpc.Accep
 		pn.acceptedValuesMap[key] = value
 		pn.acceptedSeqNumMap[key] = num
 		reply.Status = paxosrpc.OK
-		pn.maxSeqNumSoFarLock.Unlock()
-	}()
+		pn.maxSeqNumSoFarLock.Unlock()		
+	}();
 	return nil
 }
 
@@ -449,7 +449,7 @@ func (pn *paxosNode) RecvCommit(args *paxosrpc.CommitArgs, reply *paxosrpc.Commi
 	key := args.Key
 	value := args.V
 
-	go func() {
+	go func(){
 		// update the value and clear the map for accepted value and number
 		fmt.Println("In RecvCommit of ", pn.myHostPort, "committing:", key, value)
 		pn.valuesMapLock.Lock()
@@ -461,8 +461,8 @@ func (pn *paxosNode) RecvCommit(args *paxosrpc.CommitArgs, reply *paxosrpc.Commi
 		pn.valuesMap[key] = value
 		delete(pn.acceptedValuesMap, key)
 		delete(pn.acceptedSeqNumMap, key)
-	}()
-
+	}();
+	
 	return nil
 }
 
