@@ -214,6 +214,7 @@ func prepare(pn *paxosNode, hostport string, key string, seqnum int, preparechan
 		return
 	}
 
+	fmt.Println("Got Prepare reply from ", hostport)
 	preparechan <- reply
 }
 
