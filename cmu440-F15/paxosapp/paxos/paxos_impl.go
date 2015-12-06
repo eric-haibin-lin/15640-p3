@@ -322,13 +322,13 @@ func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.Propose
 		}
 		if ret.Status == paxosrpc.OK {
 			okcount++
-			if ret.N_a != 0 && ret.N_a > max_n {
-				max_n = ret.N_a
-				max_v = ret.V_a
-			}
-			if okcount >= ((pn.numNodes / 2) + 1) {
-				break
-			}
+		}
+		if ret.N_a != 0 && ret.N_a > max_n {
+			max_n = ret.N_a
+			max_v = ret.V_a
+		}
+		if okcount >= ((pn.numNodes / 2) + 1) {
+			break
 		}
 	}
 
@@ -413,25 +413,7 @@ func (pn *paxosNode) RecvPrepare(args *paxosrpc.PrepareArgs, reply *paxosrpc.Pre
 	pn.maxSeqNumSoFarLock.Lock()
 	maxNum := pn.maxSeqNumSoFar[key]
 	pn.maxSeqNumSoFarLock.Unlock()
-
-	// reject proposal when its proposal number is not higher than the highest number it's ever seen
-	if maxNum > num {
-		fmt.Println("In RecvPrepare of ", pn.myHostPort, "rejected proposal:", key, num, "maxNum:", maxNum)
-		//return -1 for proposal promised
-		reply.Status = paxosrpc.Reject
-		reply.N_a = -1
-		return nil
-	}
-	// promise proposal when its higher. return with the number and value accepted
-	fmt.Println("In RecvPrepare of ", pn.myHostPort, "accepted proposal:", key, num, "maxNum:", maxNum)
-
-	pn.maxSeqNumSoFarLock.Lock()
-	pn.maxSeqNumSoFar[key] = num
-	pn.maxSeqNumSoFarLock.Unlock()
-
-	// fill reply with accepted seqNum and value. default is -1
-	reply.Status = paxosrpc.OK
-
+	
 	pn.acceptedValuesMapLock.Lock()
 	val, ok := pn.acceptedValuesMap[key]
 	pn.acceptedValuesMapLock.Unlock()
@@ -446,6 +428,24 @@ func (pn *paxosNode) RecvPrepare(args *paxosrpc.PrepareArgs, reply *paxosrpc.Pre
 		reply.V_a = val
 		reply.N_a = seqNum
 	}
+
+	// reject proposal when its proposal number is not higher than the highest number it's ever seen
+	if maxNum > num {
+		fmt.Println("In RecvPrepare of ", pn.myHostPort, "rejected proposal:", key, num, "maxNum:", maxNum)
+		//return -1 for proposal promised
+		reply.Status = paxosrpc.Reject
+
+		return nil
+	}
+	// promise proposal when its higher. return with the number and value accepted
+	fmt.Println("In RecvPrepare of ", pn.myHostPort, "accepted proposal:", key, num, "maxNum:", maxNum)
+
+	pn.maxSeqNumSoFarLock.Lock()
+	pn.maxSeqNumSoFar[key] = num
+	pn.maxSeqNumSoFarLock.Unlock()
+
+	// fill reply with accepted seqNum and value. default is -1
+	reply.Status = paxosrpc.OK
 	return nil
 }
 
