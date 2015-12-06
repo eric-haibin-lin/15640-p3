@@ -3,8 +3,8 @@ package client
 import (
 	"errors"
 	"fmt"
-	"net"
-	"net/rpc"
+//	"net"
+//	"net/rpc"
 	"net/http"
 	"github.com/cmu440-F15/paxosapp/common"
 	"github.com/cmu440-F15/paxosapp/collectlinks"
@@ -28,7 +28,7 @@ type clientNode struct {
 func NewClientNode(myHostPort string, masterHostPort string) (ClientNode, error) {
 	fmt.Println("myhostport is", myHostPort, "hostPort of masterNode to connect is", masterHostPort)
 
-	var a clientrpc.RemoteClientNode
+	var a ClientNode
 
 	var conn common.Conn
 	conn.HostPort = masterHostPort
@@ -38,20 +38,7 @@ func NewClientNode(myHostPort string, masterHostPort string) (ClientNode, error)
 	node.conn = conn
 	node.myHostPort = myHostPort
 
-	listener, err := net.Listen("tcp", myHostPort)
-	if err != nil {
-		return nil, err
-	}
-
 	a = &node
-
-	err = rpc.RegisterName("ClientNode", clientrpc.Wrap(a))
-	if err != nil {
-		return nil, err
-	}
-
-	rpc.HandleHTTP()
-	go http.Serve(listener, nil)
 
 	return a, nil
 }
