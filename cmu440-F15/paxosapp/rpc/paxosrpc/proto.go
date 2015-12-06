@@ -8,6 +8,10 @@ type Status int
 type Lookup int
 
 const (
+	NumCopies = 5
+)
+
+const (
 	OK     Status = iota + 1 // Paxos replied OK
 	Reject                   // Paxos rejected the message
 )
@@ -51,14 +55,14 @@ type PrepareArgs struct {
 
 type PrepareReply struct {
 	Status Status
-	N_a    int         // Highest proposal number accepted
-	V_a    interface{} // Corresponding value
+	N_a    int            // Highest proposal number accepted
+	V_a    [NumCopies]int // Corresponding value
 }
 
 type AcceptArgs struct {
 	Key string
 	N   int
-	V   interface{}
+	V   [NumCopies]int
 }
 
 type AcceptReply struct {
@@ -67,7 +71,7 @@ type AcceptReply struct {
 
 type CommitArgs struct {
 	Key string
-	V   interface{}
+	V   [NumCopies]int
 }
 
 type CommitReply struct {
@@ -89,4 +93,29 @@ type ReplaceCatchupArgs struct {
 
 type ReplaceCatchupReply struct {
 	Data []byte
+}
+
+type GetAllLinksArgs struct {
+	// No content necessary, just get the whole damn thing lol
+}
+
+type GetAllLinksReply struct {
+	LinksMap map[string][]interface{}
+}
+
+type GetLinksArgs struct {
+	Key string
+}
+
+type GetLinksReply struct {
+	Value interface{}
+}
+
+type AppendArgs struct {
+	Key   string
+	Value interface{}
+}
+
+type AppendReply struct {
+	//not sure what to keep here
 }

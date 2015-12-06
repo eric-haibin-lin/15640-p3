@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"github.com/cmu440-F15/paxosapp/rpc/paxosrpc"
+	"github.com/cmu440-F15/paxosapp/rpc/slaverpc"
+	"math/rand"
 	"net"
 	"net/http"
 	"net/rpc"
@@ -12,21 +14,28 @@ import (
 	"time"
 )
 
+const (
+	NumCopies = 5
+)
+
 type paxosNode struct {
-	myHostPort string
-	numNodes   int
-	srvId      int
-	hostMap    map[int]string
-	dialerMap  map[int]*rpc.Client
+	myHostPort     string
+	numNodes       int
+	numSlaves      int
+	srvId          int
+	hostMap        map[int]string
+	slaveMap       map[int]string
+	paxosDialerMap map[int]*rpc.Client
+	slaveDialerMap map[int]*rpc.Client
 
 	/* The main key-value store */
-	valuesMap map[string]interface{}
+	valuesMap map[string][NumCopies]int
 
 	/* Note - acceptedValuesMap and acceptedSeqNumMap should be used hand-in-hand */
 
 	/* Temporary map which should be populated only when accept is called and
 	should be cleared when commit is called */
-	acceptedValuesMap map[string]interface{}
+	acceptedValuesMap map[string][NumCopies]int
 
 	/* Temporary map which should be populated only when accept is called and
 	should be cleared when commit is called */
@@ -52,7 +61,7 @@ type paxosNode struct {
 // hostMap is a map from node IDs to their hostports, numNodes is the number
 // of nodes in the ring, replace is a flag which indicates whether this node
 // is a replacement for a node which failed.
-func NewPaxosNode(myHostPort string, hostMap map[int]string, numNodes, srvId, numRetries int, replace bool) (PaxosNode, error) {
+func NewPaxosNode(myHostPort string, hostMap map[int]string, numNodes, srvId, numRetries int, replace bool, slaveMap map[int]string, numSlaves int) (PaxosNode, error) {
 	fmt.Println("myhostport is ", myHostPort, "Numnodes is ", numNodes, "srvid is ", srvId)
 
 	var a paxosrpc.RemotePaxosNode
@@ -63,16 +72,20 @@ func NewPaxosNode(myHostPort string, hostMap map[int]string, numNodes, srvId, nu
 	node.numNodes = numNodes
 	node.myHostPort = myHostPort
 	node.hostMap = make(map[int]string)
+	node.slaveMap = make(map[int]string)
 
-	node.valuesMap = make(map[string]interface{})
+	node.valuesMap = make(map[string][NumCopies]int)
 
-	node.acceptedValuesMap = make(map[string]interface{})
+	node.acceptedValuesMap = make(map[string][NumCopies]int)
 	node.acceptedSeqNumMap = make(map[string]int)
 
 	node.maxSeqNumSoFar = make(map[string]int)
 	node.nextSeqNumMap = make(map[string]int)
 
-	node.dialerMap = make(map[int]*rpc.Client)
+	node.paxosDialerMap = make(map[int]*rpc.Client)
+	node.slaveDialerMap = make(map[int]*rpc.Client)
+
+	node.numSlaves = numSlaves
 
 	node.valuesMapLock = &sync.Mutex{}
 	node.acceptedValuesMapLock = &sync.Mutex{}
@@ -82,6 +95,10 @@ func NewPaxosNode(myHostPort string, hostMap map[int]string, numNodes, srvId, nu
 
 	for k, v := range hostMap {
 		node.hostMap[k] = v
+	}
+
+	for k, v := range slaveMap {
+		node.slaveMap[k] = v
 	}
 
 	listener, err := net.Listen("tcp", myHostPort)
@@ -117,21 +134,17 @@ func NewPaxosNode(myHostPort string, hostMap map[int]string, numNodes, srvId, nu
 				time.Sleep(1 * time.Second)
 				dialer, err := rpc.DialHTTP("tcp", v)
 				if err == nil {
-					node.dialerMap[key] = dialer
+					node.paxosDialerMap[key] = dialer
 					break
 				}
 			}
 		} else {
-			node.dialerMap[key] = dialer
+			node.paxosDialerMap[key] = dialer
 		}
 
 		fmt.Println(myHostPort, " dialed ", v, " successfully")
 	}
 
-	/*fmt.Println("The dialer map is :")
-	for k, v := range node.dialerMap {
-		fmt.Println(k, ": ", v)
-	}*/
 	//get updated values map when it's a node for replacement
 	if replace {
 		nextSrv := ""
@@ -151,7 +164,7 @@ func NewPaxosNode(myHostPort string, hostMap map[int]string, numNodes, srvId, nu
 			fmt.Println(myHostPort, " couldn't dial", nextSrv, " (for ReplaceCatchup)")
 			return nil, err
 		}
-		err = node.dialerMap[k].Call("PaxosNode.RecvReplaceCatchup", &args, &reply)
+		err = node.paxosDialerMap[k].Call("PaxosNode.RecvReplaceCatchup", &args, &reply)
 		if err != nil {
 			fmt.Println("ERROR: Couldn't Dial RecvReplaceCatchup on ", nextSrv)
 		}
@@ -159,7 +172,7 @@ func NewPaxosNode(myHostPort string, hostMap map[int]string, numNodes, srvId, nu
 		var f interface{}
 		json.Unmarshal(reply.Data, &f)
 		node.valuesMapLock.Lock()
-		node.valuesMap = f.(map[string]interface{})
+		node.valuesMap = f.(map[string][NumCopies]int)
 		node.valuesMapLock.Unlock()
 
 		fmt.Println("Received values from peers. The value map has the following entries:")
@@ -182,12 +195,41 @@ func NewPaxosNode(myHostPort string, hostMap map[int]string, numNodes, srvId, nu
 
 				args.SrvID = srvId
 				args.Hostport = myHostPort
-				err = node.dialerMap[k].Call("PaxosNode.RecvReplaceServer", &args, &reply)
+				err = node.paxosDialerMap[k].Call("PaxosNode.RecvReplaceServer", &args, &reply)
 				if err != nil {
 					fmt.Println("ERROR: Couldn't Dial RecvReplaceServer on ", nextSrv)
 				}
 			}
 		}
+	}
+
+	// now try dialing all client nodes.. they should ideally already be up
+	for k, v := range node.slaveMap {
+		dialer, err := rpc.DialHTTP("tcp", v)
+
+		cntr := 0
+
+		if err != nil {
+			for {
+				fmt.Println(myHostPort, " couldn't dial slave", v, ". Trying again.")
+
+				cntr = cntr + 1
+				if cntr == numRetries {
+					fmt.Println("Couldn't connect even after all retries.", myHostPort, " aborting.")
+					return nil, errors.New("Couldn't dial a node")
+				}
+				time.Sleep(1 * time.Second)
+				dialer, err := rpc.DialHTTP("tcp", v)
+				if err == nil {
+					node.slaveDialerMap[k] = dialer
+					break
+				}
+			}
+		} else {
+			node.slaveDialerMap[k] = dialer
+		}
+
+		fmt.Println(myHostPort, " dialed slave ", v, " successfully")
 	}
 
 	return a, nil
@@ -217,21 +259,13 @@ type accReplyAndTimeout struct {
 }
 
 func prepare(pn *paxosNode, srvId int, key string, seqnum int, preparechan chan prepReplyAndTimeout) {
-	/*dialer, err := rpc.DialHTTP("tcp", hostport)
-
-	if err != nil {
-		fmt.Println("ERROR: Couldn't Dial prepare on ", hostport)
-		return
-	}*/
-
 	args := paxosrpc.PrepareArgs{}
 	args.Key = key
 	args.N = seqnum
 
 	reply := paxosrpc.PrepareReply{}
 
-	//err = dialer.Call("PaxosNode.RecvPrepare", &args, &reply)
-	err := pn.dialerMap[srvId].Call("PaxosNode.RecvPrepare", &args, &reply)
+	err := pn.paxosDialerMap[srvId].Call("PaxosNode.RecvPrepare", &args, &reply)
 
 	if err != nil {
 		fmt.Println("RPC RecvPrepare failed!")
@@ -245,14 +279,7 @@ func prepare(pn *paxosNode, srvId int, key string, seqnum int, preparechan chan 
 	preparechan <- ret
 }
 
-func accept(pn *paxosNode, srvId int, value interface{}, key string, seqnum int, acceptchan chan accReplyAndTimeout) {
-	/*dialer, err := rpc.DialHTTP("tcp", hostport)
-
-	if err != nil {
-		fmt.Println("ERROR: Couldn't Dial accept on ", hostport)
-		return
-	}*/
-
+func accept(pn *paxosNode, srvId int, value [NumCopies]int, key string, seqnum int, acceptchan chan accReplyAndTimeout) {
 	args := paxosrpc.AcceptArgs{}
 	args.Key = key
 	args.N = seqnum
@@ -260,7 +287,7 @@ func accept(pn *paxosNode, srvId int, value interface{}, key string, seqnum int,
 
 	reply := paxosrpc.AcceptReply{}
 
-	err := pn.dialerMap[srvId].Call("PaxosNode.RecvAccept", &args, &reply)
+	err := pn.paxosDialerMap[srvId].Call("PaxosNode.RecvAccept", &args, &reply)
 
 	if err != nil {
 		fmt.Println("RPC RecvAccept failed!")
@@ -274,21 +301,14 @@ func accept(pn *paxosNode, srvId int, value interface{}, key string, seqnum int,
 	acceptchan <- ret
 }
 
-func commit(pn *paxosNode, srvId int, value interface{}, key string, commitchan chan int) {
-	/*dialer, err := rpc.DialHTTP("tcp", hostport)
-
-	if err != nil {
-		fmt.Println("ERROR: Couldn't Dial commit on ", hostport)
-		return
-	}*/
-
+func commit(pn *paxosNode, srvId int, value [NumCopies]int, key string, commitchan chan int) {
 	args := paxosrpc.CommitArgs{}
 	args.Key = key
 	args.V = value
 
 	reply := paxosrpc.CommitReply{}
 
-	err := pn.dialerMap[srvId].Call("PaxosNode.RecvCommit", &args, &reply)
+	err := pn.paxosDialerMap[srvId].Call("PaxosNode.RecvCommit", &args, &reply)
 
 	if err != nil {
 		fmt.Println("RPC RecvCommit failed!")
@@ -314,6 +334,45 @@ func wakeMeUpAfter15Seconds(preparechan chan prepReplyAndTimeout, acceptchan cha
 	commitchan <- 1
 
 }
+
+func (pn *paxosNode) GetLinks(args *paxosrpc.GetLinksArgs, reply *paxosrpc.GetLinksReply) error {
+	for _, slaveId := range pn.valuesMap[args.Key] {
+		var getArgs slaverpc.GetArgs
+		getArgs.Key = args.Key
+
+		var getReply slaverpc.GetReply
+		err := pn.slaveDialerMap[slaveId].Call("SlaveNode.Get", &getArgs, &getReply)
+		if err == nil {
+			reply.Value = getReply.Value
+			return nil
+		}
+	}
+	return errors.New("No slave replied.")
+}
+
+func (pn *paxosNode) GetAllLinks(args *paxosrpc.GetAllLinksArgs, reply *paxosrpc.GetAllLinksReply) error {
+
+	for key, value := range pn.valuesMap {
+		var getArgs slaverpc.GetArgs
+		getArgs.Key = key
+
+		var getReply slaverpc.GetReply
+		for _, slaveId := range value {
+			err := pn.slaveDialerMap[slaveId].Call("SlaveNode.Get", &getArgs, &getReply)
+			if err == nil {
+				reply.LinksMap[key] = getReply.Value
+				break
+			}
+		}
+	}
+	return nil
+}
+
+func (pn *paxosNode) Append(args *paxosrpc.AppendArgs, reply *paxosrpc.AppendReply) error {
+
+	return nil
+}
+
 func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.ProposeReply) error {
 	preparechan := make(chan prepReplyAndTimeout, 100)
 	acceptchan := make(chan accReplyAndTimeout, 100)
@@ -322,6 +381,35 @@ func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.Propose
 	fmt.Println("In Propose of ", pn.srvId)
 
 	fmt.Println("Key is ", args.Key, ", V is ", args.V, " and N is ", args.N)
+
+	var targetSlaves [NumCopies]int
+	//now select a group of slaves to store this value on
+
+	i := 0
+	rand.Seed(time.Now().UnixNano())
+	for i < NumCopies {
+		for {
+			num := rand.Intn(pn.numSlaves) + 1
+
+			var found int
+			found = 0
+			//fmt.Println("The slice is ", targetSlaves)
+			for _, val := range targetSlaves {
+				//fmt.Println("j is ", j)
+				if val == num {
+					found = 1
+					break
+				}
+			}
+			if found == 0 {
+				targetSlaves[i] = num
+				break
+			}
+		}
+		i += 1
+	}
+
+	fmt.Println("Generated the targetSlaves slice as ", targetSlaves)
 
 	go wakeMeUpAfter15Seconds(preparechan, acceptchan, commitchan)
 
@@ -333,9 +421,9 @@ func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.Propose
 	okcount := 0
 
 	max_n := 0
-	var max_v interface{}
-	max_v = args.V
-	//max_v := args.V
+	var max_v [NumCopies]int
+	max_v = targetSlaves
+	//max_v = args.V
 
 	for i := 0; i < pn.numNodes; i++ {
 		ret, _ := <-preparechan
@@ -343,10 +431,6 @@ func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.Propose
 			fmt.Println("Didn't finish prepare stage even after 15 seconds")
 			return errors.New("Didn't finish prepare stage even after 15 seconds")
 		}
-		/*if !ok {
-			fmt.Println("Didn't finish prepare stage even after 15 seconds")
-			return errors.New("Didn't finish prepare stage even after 15 seconds")
-		}*/
 		if ret.prepReply.Status == paxosrpc.OK {
 			okcount++
 		}
@@ -363,16 +447,16 @@ func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.Propose
 		return errors.New("Didn't get a majority in prepare phase")
 	}
 
-	var valueToPropose interface{}
-	if max_n != 0 { //someone suggested a different value
+	//var valueToPropose [NumCopies]int
+	/*if max_n != 0 { //someone suggested a different value
 		valueToPropose = max_v
 	} else {
 		valueToPropose = args.V
-	}
+	}*/
 
 	for k, v := range pn.hostMap {
 		fmt.Println("Will call Accept on ", v)
-		go accept(pn, k, valueToPropose, args.Key, args.N, acceptchan)
+		go accept(pn, k, max_v, args.Key, args.N, acceptchan)
 	}
 
 	okcount = 0
@@ -398,7 +482,7 @@ func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.Propose
 	okcount = 0
 	for k, v := range pn.hostMap {
 		fmt.Println("Will call Commit on ", v)
-		go commit(pn, k, valueToPropose, args.Key, commitchan)
+		go commit(pn, k, max_v, args.Key, commitchan)
 	}
 
 	for i := 0; i < pn.numNodes; i++ {
@@ -409,8 +493,24 @@ func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.Propose
 		}
 	}
 
-	reply.V = valueToPropose
+	reply.V = max_v
 
+	fmt.Println(pn.myHostPort, " has successfully proposed the set ", max_v)
+
+	// so a group of 3 slaves has been selected to store the data
+	// now actually store the data
+
+	var appendArgs slaverpc.AppendArgs
+	appendArgs.Key = args.Key
+	appendArgs.Value = args.V
+
+	var appendReply slaverpc.AppendReply
+	for _, slaveId := range max_v {
+		err := pn.slaveDialerMap[slaveId].Call("SlaveNode.Append", &appendArgs, &appendReply)
+		if err != nil {
+			fmt.Println("Append RPC Failed on ", pn.slaveMap[slaveId])
+		}
+	}
 	return nil
 }
 
@@ -541,7 +641,7 @@ func (pn *paxosNode) RecvReplaceServer(args *paxosrpc.ReplaceServerArgs, reply *
 	dialer, _ := rpc.DialHTTP("tcp", args.Hostport)
 
 	pn.hostMap[args.SrvID] = args.Hostport
-	pn.dialerMap[args.SrvID] = dialer
+	pn.paxosDialerMap[args.SrvID] = dialer
 	return nil
 }
 

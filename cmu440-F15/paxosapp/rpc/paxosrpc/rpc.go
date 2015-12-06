@@ -44,6 +44,15 @@ type RemotePaxosNode interface {
 	// needed to make the replacement server aware of the keys and values
 	// committed so far.
 	RecvReplaceCatchup(args *ReplaceCatchupArgs, reply *ReplaceCatchupReply) error
+
+	// Get all crawled data from the database
+	GetAllLinks(args *GetAllLinksArgs, reply *GetAllLinksReply) error
+
+	// Get links for a specific URL
+	GetLinks(args *GetLinksArgs, reply *GetLinksReply) error
+
+	// Append some links
+	Append(args *AppendArgs, reply *AppendReply) error
 }
 
 type PaxosNode struct {
