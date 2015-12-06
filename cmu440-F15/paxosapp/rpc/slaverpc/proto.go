@@ -8,12 +8,12 @@ type GetArgs struct {
 }
 
 type GetReply struct {
-	Value []interface{}
+	Value []string
 }
 
 type AppendArgs struct {
 	Key   string
-	Value interface{}
+	Value []string
 }
 
 type AppendReply struct {

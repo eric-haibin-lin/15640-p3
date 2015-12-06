@@ -32,20 +32,12 @@ type ProposalNumberReply struct {
 type ProposeArgs struct {
 	N   int // Proposal number
 	Key string
-	V   interface{} // Value for the Key
+	V   [NumCopies]int
 }
 
 type ProposeReply struct {
-	V interface{} // Value that was actually committed for that key
-}
-
-type GetValueArgs struct {
-	Key string
-}
-
-type GetValueReply struct {
-	V      interface{}
-	Status Lookup
+	Status Status
+	V      [NumCopies]int
 }
 
 type PrepareArgs struct {
@@ -100,7 +92,7 @@ type GetAllLinksArgs struct {
 }
 
 type GetAllLinksReply struct {
-	LinksMap map[string][]interface{}
+	LinksMap map[string][]string
 }
 
 type GetLinksArgs struct {
@@ -108,14 +100,14 @@ type GetLinksArgs struct {
 }
 
 type GetLinksReply struct {
-	Value interface{}
+	Value []string
 }
 
 type AppendArgs struct {
 	Key   string
-	Value interface{}
+	Value []string
 }
 
 type AppendReply struct {
-	//not sure what to keep here
+	Status Status
 }

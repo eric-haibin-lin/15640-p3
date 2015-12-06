@@ -10,7 +10,7 @@ import (
 )
 
 type slaveNode struct {
-	valuesMap     map[string][]interface{}
+	valuesMap     map[string][]string
 	valuesMapLock *sync.Mutex
 	srvId         int
 	myHostPort    string
@@ -19,7 +19,7 @@ type slaveNode struct {
 func NewSlaveNode(myHostPort string, srvId int) (SlaveNode, error) {
 	var a slaverpc.RemoteSlaveNode
 	node := slaveNode{}
-	node.valuesMap = make(map[string][]interface{})
+	node.valuesMap = make(map[string][]string)
 	node.valuesMapLock = &sync.Mutex{}
 	node.srvId = srvId
 	node.myHostPort = myHostPort
@@ -59,7 +59,7 @@ func (sn *slaveNode) Get(args *slaverpc.GetArgs, reply *slaverpc.GetReply) error
 	sn.valuesMapLock.Lock()
 	defer sn.valuesMapLock.Unlock()
 	key := args.Key
-	value := sn.valuesMap[key] 
+	value := sn.valuesMap[key]
 	reply.Value = value
 	return nil
 }

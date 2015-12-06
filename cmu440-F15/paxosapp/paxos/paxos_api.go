@@ -10,5 +10,5 @@ import (
 type PaxosNode interface {
 	GetNextProposalNumber(args *paxosrpc.ProposalNumberArgs, reply *paxosrpc.ProposalNumberReply) error
 	Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.ProposeReply) error
-	GetValue(args *paxosrpc.GetValueArgs, reply *paxosrpc.GetValueReply) error
+	//GetValue(args *paxosrpc.GetValueArgs, reply *paxosrpc.GetValueReply) error
 }

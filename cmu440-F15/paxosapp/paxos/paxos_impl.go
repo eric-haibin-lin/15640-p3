@@ -369,18 +369,13 @@ func (pn *paxosNode) GetAllLinks(args *paxosrpc.GetAllLinksArgs, reply *paxosrpc
 }
 
 func (pn *paxosNode) Append(args *paxosrpc.AppendArgs, reply *paxosrpc.AppendReply) error {
+	var propNumArgs paxosrpc.ProposalNumberArgs
+	var propNumReply paxosrpc.ProposalNumberReply
+	propNumArgs.Key = args.Key
 
-	return nil
-}
+	pn.GetNextProposalNumber(&propNumArgs, &propNumReply)
 
-func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.ProposeReply) error {
-	preparechan := make(chan prepReplyAndTimeout, 100)
-	acceptchan := make(chan accReplyAndTimeout, 100)
-	commitchan := make(chan int, 100)
-
-	fmt.Println("In Propose of ", pn.srvId)
-
-	fmt.Println("Key is ", args.Key, ", V is ", args.V, " and N is ", args.N)
+	fmt.Println("Got proposal number as ", propNumReply.N)
 
 	var targetSlaves [NumCopies]int
 	//now select a group of slaves to store this value on
@@ -411,6 +406,41 @@ func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.Propose
 
 	fmt.Println("Generated the targetSlaves slice as ", targetSlaves)
 
+	var proposeArgs paxosrpc.ProposeArgs
+	var proposeReply paxosrpc.ProposeReply
+
+	proposeArgs.N = propNumReply.N
+	proposeArgs.Key = args.Key
+	proposeArgs.V = targetSlaves
+
+	pn.Propose(&proposeArgs, &proposeReply)
+
+	var appendArgs slaverpc.AppendArgs
+	appendArgs.Key = args.Key
+	appendArgs.Value = args.Value
+
+	var appendReply slaverpc.AppendReply
+	for _, slaveId := range proposeReply.V {
+		err := pn.slaveDialerMap[slaveId].Call("SlaveNode.Append", &appendArgs, &appendReply)
+		if err != nil {
+			fmt.Println("Append RPC Failed on ", pn.slaveMap[slaveId])
+		}
+	}
+
+	reply.Status = paxosrpc.OK
+	return nil
+
+}
+
+func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.ProposeReply) error {
+	preparechan := make(chan prepReplyAndTimeout, 100)
+	acceptchan := make(chan accReplyAndTimeout, 100)
+	commitchan := make(chan int, 100)
+
+	fmt.Println("In Propose of ", pn.srvId)
+
+	fmt.Println("Key is ", args.Key, ", V is ", args.V, " and N is ", args.N)
+
 	go wakeMeUpAfter15Seconds(preparechan, acceptchan, commitchan)
 
 	for k, v := range pn.hostMap {
@@ -422,7 +452,7 @@ func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.Propose
 
 	max_n := 0
 	var max_v [NumCopies]int
-	max_v = targetSlaves
+	max_v = args.V
 	//max_v = args.V
 
 	for i := 0; i < pn.numNodes; i++ {
@@ -493,28 +523,19 @@ func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.Propose
 		}
 	}
 
+	//reply.V = max_v
+	reply.Status = paxosrpc.OK
 	reply.V = max_v
 
 	fmt.Println(pn.myHostPort, " has successfully proposed the set ", max_v)
+	return nil
 
 	// so a group of 3 slaves has been selected to store the data
 	// now actually store the data
 
-	var appendArgs slaverpc.AppendArgs
-	appendArgs.Key = args.Key
-	appendArgs.Value = args.V
-
-	var appendReply slaverpc.AppendReply
-	for _, slaveId := range max_v {
-		err := pn.slaveDialerMap[slaveId].Call("SlaveNode.Append", &appendArgs, &appendReply)
-		if err != nil {
-			fmt.Println("Append RPC Failed on ", pn.slaveMap[slaveId])
-		}
-	}
-	return nil
 }
 
-func (pn *paxosNode) GetValue(args *paxosrpc.GetValueArgs, reply *paxosrpc.GetValueReply) error {
+/*func (pn *paxosNode) GetValue(args *paxosrpc.GetValueArgs, reply *paxosrpc.GetValueReply) error {
 	fmt.Println("Inside GetValue of ", pn.myHostPort)
 	defer fmt.Println("Leaving GetValue of ", pn.myHostPort)
 	pn.valuesMapLock.Lock()
@@ -529,7 +550,7 @@ func (pn *paxosNode) GetValue(args *paxosrpc.GetValueArgs, reply *paxosrpc.GetVa
 
 	reply.Status = paxosrpc.KeyNotFound
 	return nil
-}
+}*/
 
 func (pn *paxosNode) RecvPrepare(args *paxosrpc.PrepareArgs, reply *paxosrpc.PrepareReply) error {
 	defer fmt.Println("Leaving RecvPrepare of ", pn.myHostPort)
@@ -662,16 +683,6 @@ func (pn *paxosNode) RecvReplaceCatchup(args *paxosrpc.ReplaceCatchupArgs, reply
 }
 
 /*
-
-// This file contains constants and arguments used to perform RPCs between
-// two Paxos nodes. DO NOT MODIFY!
-
-package paxosrpc
-
-// Status represents the status of a RPC's reply.
-type Status int
-type Lookup int
-
 const (
 	OK     Status = iota + 1 // Paxos replied OK
 	Reject                   // Paxos rejected the message
@@ -693,20 +704,11 @@ type ProposalNumberReply struct {
 type ProposeArgs struct {
 	N   int // Proposal number
 	Key string
-	V   interface{} // Value for the Key
+	V   []string
 }
 
 type ProposeReply struct {
-	V interface{} // Value that was actually committed for that key
-}
-
-type GetValueArgs struct {
-	Key string
-}
-
-type GetValueReply struct {
-	V      interface{}
-	Status Lookup
+	Status Status
 }
 
 type PrepareArgs struct {
@@ -716,14 +718,14 @@ type PrepareArgs struct {
 
 type PrepareReply struct {
 	Status Status
-	N_a    int         // Highest proposal number accepted
-	V_a    interface{} // Corresponding value
+	N_a    int            // Highest proposal number accepted
+	V_a    [NumCopies]int // Corresponding value
 }
 
 type AcceptArgs struct {
 	Key string
 	N   int
-	V   interface{}
+	V   [NumCopies]int
 }
 
 type AcceptReply struct {
@@ -732,7 +734,7 @@ type AcceptReply struct {
 
 type CommitArgs struct {
 	Key string
-	V   interface{}
+	V   [NumCopies]int
 }
 
 type CommitReply struct {
@@ -754,5 +756,30 @@ type ReplaceCatchupArgs struct {
 
 type ReplaceCatchupReply struct {
 	Data []byte
+}
+
+type GetAllLinksArgs struct {
+	// No content necessary, just get the whole damn thing lol
+}
+
+type GetAllLinksReply struct {
+	LinksMap map[string][]string
+}
+
+type GetLinksArgs struct {
+	Key string
+}
+
+type GetLinksReply struct {
+	Value []string
+}
+
+type AppendArgs struct {
+	Key   string
+	Value []string
+}
+
+type AppendReply struct {
+	//not sure what to keep here
 }
 */

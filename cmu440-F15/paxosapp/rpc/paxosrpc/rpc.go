@@ -9,7 +9,7 @@ type RemotePaxosNode interface {
 
 	// GetValue looks up the value for a key, and replies with the value or with
 	// the Status KeyNotFound.
-	GetValue(args *GetValueArgs, reply *GetValueReply) error
+	//GetValue(args *GetValueArgs, reply *GetValueReply) error
 
 	// GetNextProposalNumber generates a proposal number which will be passed to
 	// Propose. Proposal numbers should not repeat, and for a particular node
