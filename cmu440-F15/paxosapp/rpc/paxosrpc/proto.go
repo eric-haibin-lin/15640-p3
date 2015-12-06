@@ -32,20 +32,12 @@ type ProposalNumberReply struct {
 type ProposeArgs struct {
 	N   int // Proposal number
 	Key string
-	V   interface{} // Value for the Key
+	V   [NumCopies]int
 }
 
 type ProposeReply struct {
-	V interface{} // Value that was actually committed for that key
-}
-
-type GetValueArgs struct {
-	Key string
-}
-
-type GetValueReply struct {
-	V      interface{}
-	Status Lookup
+	Status Status
+	V      [NumCopies]int
 }
 
 type PrepareArgs struct {

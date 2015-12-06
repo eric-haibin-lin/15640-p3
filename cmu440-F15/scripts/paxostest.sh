@@ -96,16 +96,19 @@ sleep 1
 echo "Sleeping for 10 seconds..."
 sleep 10
 
-kill -9 ${SLAVE_NODE_PID0}
-kill -9 ${SLAVE_NODE_PID1}
-kill -9 ${SLAVE_NODE_PID2}
-kill -9 ${SLAVE_NODE_PID3}
-kill -9 ${SLAVE_NODE_PID4}
-kill -9 ${SLAVE_NODE_PID5}
+while [[ true ]]; do
+  #statements
+done
+# kill -9 ${SLAVE_NODE_PID0}
+# kill -9 ${SLAVE_NODE_PID1}
+# kill -9 ${SLAVE_NODE_PID2}
+# kill -9 ${SLAVE_NODE_PID3}
+# kill -9 ${SLAVE_NODE_PID4}
+# kill -9 ${SLAVE_NODE_PID5}
 
 # Kill paxos node.
-kill -9 ${PAXOS_NODE_PID0}
-kill -9 ${PAXOS_NODE_PID1}
-kill -9 ${PAXOS_NODE_PID2}
+# kill -9 ${PAXOS_NODE_PID0}
+# kill -9 ${PAXOS_NODE_PID1}
+# kill -9 ${PAXOS_NODE_PID2}
 
-exit
+# exit
