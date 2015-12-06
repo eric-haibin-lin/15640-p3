@@ -336,14 +336,17 @@ func wakeMeUpAfter15Seconds(preparechan chan prepReplyAndTimeout, acceptchan cha
 }
 
 func (pn *paxosNode) GetLinks(args *paxosrpc.GetLinksArgs, reply *paxosrpc.GetLinksReply) error {
+	fmtPrintln("GetLinks invoked on Node ", pn.srvId, " for key ", args.Key)
 	for _, slaveId := range pn.valuesMap[args.Key] {
 		var getArgs slaverpc.GetArgs
 		getArgs.Key = args.Key
 
 		var getReply slaverpc.GetReply
+		fmt.Println("Asking slave ", slaveId)
 		err := pn.slaveDialerMap[slaveId].Call("SlaveNode.Get", &getArgs, &getReply)
 		if err == nil {
 			reply.Value = getReply.Value
+			fmt.Println("Slave ", slaveId, " has the data for ", args.Key), "!")
 			return nil
 		}
 	}

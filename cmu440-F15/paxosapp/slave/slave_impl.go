@@ -43,7 +43,7 @@ func NewSlaveNode(myHostPort string, srvId int) (SlaveNode, error) {
 }
 
 func (sn *slaveNode) Append(args *slaverpc.AppendArgs, reply *slaverpc.AppendReply) error {
-	fmt.Println("Append invoked on ", sn.srvId)
+	fmt.Println("Append invoked on ", sn.srvId, " for Key: ", args.Key)
 	defer fmt.Println("Leaving Append on ", sn.srvId)
 	sn.valuesMapLock.Lock()
 	defer sn.valuesMapLock.Unlock()
@@ -52,9 +52,11 @@ func (sn *slaveNode) Append(args *slaverpc.AppendArgs, reply *slaverpc.AppendRep
 	_, ok := sn.valuesMap[key]
 
 	if !ok {
+		fmt.Println("Didn't find anything on slave ", sn.srvId, ", so creating a new slice")
 		sn.valuesMap[key] = make([]string, 0)
 	}
 
+	fmt.Println("Slave ", sn.srvId, " appended for key: ", args.Key)
 	sn.valuesMap[key] = append(sn.valuesMap[key], value...)
 	return nil
 }
