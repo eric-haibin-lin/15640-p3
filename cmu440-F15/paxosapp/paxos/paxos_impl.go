@@ -365,9 +365,9 @@ func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.Propose
 
 	var valueToPropose interface{}
 	if max_n != 0 { //someone suggested a different value
-		valueToPropose = args.V
-	} else {
 		valueToPropose = max_v
+	} else {
+		valueToPropose = args.V
 	}
 
 	for k, v := range pn.hostMap {
