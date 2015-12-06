@@ -51,7 +51,7 @@ CLIENT_NODE=$GOPATH/bin/crunner
 # Start client node.
 ${CLIENT_NODE} -port=$NODE_PORT0 -masterPort=$1  &
 CLIENT_NODE_PID0=$!
-sleep 5
+sleep 10
 
 # ${CLIENT_NODE} -ports=${ALL_PORTS} -N=3 -id=1 -pxport=${PROXY_PORT} -proxy=0 2 &
 # CLIENT_NODE_PID1=$!

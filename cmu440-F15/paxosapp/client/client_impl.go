@@ -8,16 +8,55 @@ import (
 	"net/http"
 	"github.com/cmu440-F15/paxosapp/common"
 	"github.com/cmu440-F15/paxosapp/collectlinks"
-	"github.com/cmu440-F15/paxosapp/rpc/clientrpc"
 	"net/url"
 	"crypto/tls"
 	
 )
 
+type Status int
+
+const (
+	OK     Status = iota + 1 // Paxos replied OK
+	Fail                   	 // Paxos rejected the message
+)
+
 type clientNode struct {
 	conn common.Conn
 	myHostPort string
-	
+	linkRelationChan chan linkRelation
+	allLinksChan chan string
+	nextLinkChan chan string
+	visited map[string]bool
+	httpClient http.Client
+}
+
+type linkRelation struct {
+	follower string
+	followee []string
+}
+
+type CrawlArgs struct {
+	RootUrl string
+}
+
+type CrawlReply struct {
+	Status Status 
+}
+
+type TopKPageArgs struct {
+	K   int 	// Top K 
+}
+
+type TopKPageReply struct {
+	List []string // The list of top K urls 
+}
+
+type PageRankArgs struct {
+	Iteration int
+}
+
+type PageRankReply struct {
+	Status Status
 }
 
 // NewClientNode creates a new ClientNode. This function should return only when
@@ -29,7 +68,6 @@ func NewClientNode(myHostPort string, masterHostPort string) (ClientNode, error)
 	fmt.Println("myhostport is", myHostPort, "hostPort of masterNode to connect is", masterHostPort)
 
 	var a ClientNode
-
 	var conn common.Conn
 	conn.HostPort = masterHostPort
 	//TODO dial with master hostPort
@@ -37,87 +75,113 @@ func NewClientNode(myHostPort string, masterHostPort string) (ClientNode, error)
 	node := clientNode{}
 	node.conn = conn
 	node.myHostPort = myHostPort
-
+	
+	node.linkRelationChan = make(chan linkRelation)
+	node.allLinksChan = make(chan string)
+	node.nextLinkChan = make(chan string)
+	node.visited = make(map[string]bool)
+	
+	transport := &http.Transport{
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: true,
+		},
+	}
+	node.httpClient = http.Client{Transport: transport}
+	
 	a = &node
 
 	return a, nil
 }
 
 // Crawls the entire internet with given root url. 
-func (cn *clientNode) Crawl(args *clientrpc.CrawlArgs, reply *clientrpc.CrawlReply) error {
-	
+func (cn *clientNode) Crawl(args *CrawlArgs, reply *CrawlReply) error {
+	fmt.Println("Crawl invoked on ", cn.myHostPort)
+	//set root url as the starting point of crawling
 	rootUrl := args.RootUrl
-	
-	queue := make(chan string)
-	filteredQueue := make(chan string)
+	go func() { cn.allLinksChan <- rootUrl }()
+	go cn.checkVisited()
 
-	go func() { queue <- rootUrl }()
-	go filterQueue(queue, filteredQueue)
-
-	// pull from the filtered queue, add to the unfiltered queue
-	for uri := range filteredQueue {
-		enqueue(uri, queue)
+	//start to crawl!
+	for {
+		select {
+			case uri, ok := <-cn.nextLinkChan:
+				if ok {
+					_, err := cn.doCrawl(uri)
+					if err == nil {
+						//TODO call Append on master node to persist the urls crawled	
+					}
+				} else {
+					//Should stop crawling now 
+				}
+		}
 	}
-	
-	//TODO call Append on master node to persist the urls crawled
-	
 	return errors.New("Not append to master yet.")
 }
 
-func (cn *clientNode) RunPageRank(args *clientrpc.PageRankArgs, reply *clientrpc.PageRankReply) error {
+func (cn *clientNode) RunPageRank(args *PageRankArgs, reply *PageRankReply) error {
+	fmt.Println("RunPageRank invoked on ", cn.myHostPort)
 	return errors.New("Not implemented yet.")
 }
 
-func (cn *clientNode) GetTopKPage(args *clientrpc.TopKPageArgs, reply *clientrpc.TopKPageReply) error {
+func (cn *clientNode) GetTopKPage(args *TopKPageArgs, reply *TopKPageReply) error {
+	fmt.Println("GetTopKPage invoked on ", cn.myHostPort)
 	return errors.New("Not implemented yet.")
 }
 
-// Internal method for crawler
-func filterQueue(in chan string, out chan string) {
-	var seen = make(map[string]bool)
-	for val := range in {
-		if !seen[val] {
-			seen[val] = true
-			out <- val
+// filterVisited checks if all links crawled are visited. If not, push it to the 
+// nextLinksChan to start crawling from there
+func (cn *clientNode) checkVisited() {
+	for val := range cn.allLinksChan {
+		if !cn.visited[val] {
+			cn.visited[val] = true
+			cn.nextLinkChan <- val
 		}
 	}
 }
 
-func enqueue(uri string, queue chan string) {
-	fmt.Println("fetching", uri)
-	transport := &http.Transport{
-		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: true,
-		},
-	}
-	client := http.Client{Transport: transport}
-	resp, err := client.Get(uri)
+// doCrawl fetches the webpage and collects the links contained in this webpage
+func (cn *clientNode) doCrawl(uri string) (linkRelation, error) {
+	var rel linkRelation 
+	rel.follower = uri
+	rel.followee = make([]string, 0)
+	resp, err := cn.httpClient.Get(uri)
 	if err != nil {
 		fmt.Println(err)
-		return
+		return rel, errors.New("Failed to fetch page" + uri)
 	}
 	defer resp.Body.Close()
-
+	fmt.Println("fetched ", uri)
 	links := collectlinks.All(resp.Body)
-
 	for _, link := range links {
-		absolute := fixUrl(link, uri)
-		if uri != "" {
-			go func() { queue <- absolute }()
+		absolute := getAbsoluteUrl(link, uri)
+		if absolute != "" {
+			rel.followee = append(rel.followee, absolute)
+			go func() { cn.allLinksChan <- absolute }()
 		}
 	}
-
+	/*fmt.Print("New link relation: ", rel.follower, " ========> ")
+	for _, followee := range rel.followee {
+		fmt.Print(followee, "")
+	}
+	fmt.Println()*/
+	return rel, nil
 }
 
-func fixUrl(href, base string) string {
+// getAbsoluteUrl returns the absolute url based on href contained in the webpage 
+// and the base url information. (e.g. it turns a /language_tool href link in 
+// http://www.google.com into http://www.google.com/language_tool)
+func getAbsoluteUrl(href, base string) string {
 	uri, err := url.Parse(href)
+	//abandon broken href
 	if err != nil {
 		return ""
 	}
+	//abandon broken base url
 	baseUrl, err := url.Parse(base)
 	if err != nil {
 		return ""
 	}
+	//resolve and generate absolute url
 	uri = baseUrl.ResolveReference(uri)
 	return uri.String()
 }
