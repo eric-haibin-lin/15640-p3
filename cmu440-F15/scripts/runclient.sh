@@ -1,8 +1,22 @@
 #!/bin/bash
 
-if [ "$#" != "1" ]; then
-    echo "This script creates a client runner connected with master server"
-    echo "Usage: runclient.sh -masterPort 1234"
+if [ "$#" == "0" ]; then
+    echo "This script creates a client runner connected with master server. The usage is as follows:"
+    echo "crawl - crawl [number_of_pages] webpages from the internet and save to ScrapeStore, starting from [root_url]
+    runclient.sh crawl [root_url] [number_of_pages] 
+    runclient.sh crawl http://news.google.com 10 
+    "
+    echo "getlink - retrieve all links contained in [target_url] crawled previously
+    runclient.sh getlink [target_url]
+    runclient.sh getlink http://news.google.com
+    "
+    echo "pagerank - run pagerank algorithm with the webpages crawled
+    runclient.sh pagerank
+    "
+    echo "getrank - run pagerank algorithm with the webpages crawled
+    runclient.sh getrank [target_url]
+    runclient.sh getrank http://news.google.com
+    "
     exit 1
 fi 
 
@@ -28,46 +42,35 @@ if [ $? -ne 0 ]; then
    exit $?
 fi
 
-# Build the test binary to use to test the student's client node implementation.
-# Exit immediately if there was a compile-time error.
-# go install github.com/cmu440-F15/clientapp/tests/clienttest
-# if [ $? -ne 0 ]; then
-   # echo "FAIL: code does not compile"
-   # exit $?
-# fi
-
 # Pick random ports between [10000, 20000).
 NODE_PORT0=$(((RANDOM % 10000) + 10000))
-# NODE_PORT1=$(((RANDOM % 10000) + 10000))
-# NODE_PORT2=$(((RANDOM % 10000) + 10000))
-# TESTER_PORT=$(((RANDOM % 10000) + 10000))
-# PROXY_PORT=$(((RANDOM & 10000) + 10000))
-# CLIENT_TEST=$GOPATH/bin/clienttest
+MASTER_PORT=`cat hostports.config`
+NUM=$3
+if [ "$#" != "3" ]; then
+  NUM=10
+fi
+
 CLIENT_NODE=$GOPATH/bin/crunner
-# ALL_PORTS="${NODE_PORT0},${NODE_PORT1},${NODE_PORT2}"
 
 ##################################################
 
 # Start client node.
-${CLIENT_NODE} -port=$NODE_PORT0 -masterPort=$1  &
+if [ $1 == "crawl" ]; then
+  ${CLIENT_NODE} -port=$NODE_PORT0 -masterPort=$MASTER_PORT -opt=$1 -url=$2 -num=$NUM  &
+elif [ $1 == "getlink" ]; then
+  ${CLIENT_NODE} -port=$NODE_PORT0 -masterPort=$MASTER_PORT -opt=$1 -url=$2  &
+elif [ $1 == "pagerank" ]; then
+  ${CLIENT_NODE} -port=$NODE_PORT0 -masterPort=$MASTER_PORT -opt=$1  &
+elif [ $1 == "getrank" ]; then
+  ${CLIENT_NODE} -port=$NODE_PORT0 -masterPort=$MASTER_PORT -opt=$1 -url=$2  &
+else 
+  echo "unknown command"  
+fi
+
 CLIENT_NODE_PID0=$!
 sleep 10
 
-# ${CLIENT_NODE} -ports=${ALL_PORTS} -N=3 -id=1 -pxport=${PROXY_PORT} -proxy=0 2 &
-# CLIENT_NODE_PID1=$!
-# sleep 1
-
-# ${CLIENT_NODE} -ports=${ALL_PORTS} -N=3 -id=2 -pxport=${PROXY_PORT} -proxy=0 2 &
-# CLIENT_NODE_PID2=$!
-# sleep 1
-
-# Start clienttest. 
-# ${CLIENT_TEST} -port=${TESTER_PORT} -clientports=${ALL_PORTS} -N=3 -nodeport=${NODE_PORT0} -pxport=${PROXY_PORT}
-
 # Kill client node.
-kill -9 ${CLIENT_NODE_PID0}
-# kill -9 ${CLIENT_NODE_PID1}
-# kill -9 ${CLIENT_NODE_PID2}
+# kill -9 ${CLIENT_NODE_PID0}
+
 wait ${CLIENT_NODE_PID0} 2> /dev/null
-# wait ${CLIENT_NODE_PID1} 2> /dev/null
-# wait ${CLIENT_NODE_PID2} 2> /dev/null

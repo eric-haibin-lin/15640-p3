@@ -1,15 +1,18 @@
 package client
 
 import (
+	"crypto/tls"
 	"errors"
 	"fmt"
-	//	"net"
-	//	"net/rpc"
-	"crypto/tls"
 	"github.com/cmu440-F15/paxosapp/collectlinks"
 	"github.com/cmu440-F15/paxosapp/common"
+	//"github.com/cmu440-F15/paxosapp/pagerank"
+	"github.com/cmu440-F15/paxosapp/rpc/paxosrpc"
+	"math/rand"
 	"net/http"
+	"net/rpc"
 	"net/url"
+	"time"
 )
 
 type Status int
@@ -17,6 +20,10 @@ type Status int
 const (
 	OK   Status = iota + 1 // Paxos replied OK
 	Fail                   // Paxos rejected the message
+)
+
+const (
+	tolerance = 0.0001
 )
 
 type clientNode struct {
@@ -27,6 +34,7 @@ type clientNode struct {
 	nextLinkChan     chan string
 	visited          map[string]bool
 	httpClient       http.Client
+	idMap            map[string]int
 }
 
 type linkRelation struct {
@@ -35,23 +43,32 @@ type linkRelation struct {
 }
 
 type CrawlArgs struct {
-	RootUrl string
+	RootUrl  string
+	NumPages int
 }
 
 type CrawlReply struct {
 	Status Status
 }
 
-type TopKPageArgs struct {
+type GetLinkArgs struct {
+	Url string
+}
+
+type GetLinkReply struct {
+	List []string // The list of all urls
+}
+
+type GetRankArgs struct {
 	K int // Top K
 }
 
-type TopKPageReply struct {
+type GetRankReply struct {
 	List []string // The list of top K urls
 }
 
 type PageRankArgs struct {
-	Iteration int
+	//Nothing to provide here
 }
 
 type PageRankReply struct {
@@ -62,23 +79,35 @@ type PageRankReply struct {
 // it successfully dials to a master node, and should return a non-nil error if the
 // master node could not be reached.
 //
-// masterHostPort is the hostname and port number to master node
-func NewClientNode(myHostPort string, masterHostPort string) (ClientNode, error) {
-	fmt.Println("myhostport is", myHostPort, "hostPort of masterNode to connect is", masterHostPort)
+// masterHostPort is the list of hostnames and port numbers to master nodes
+func NewClientNode(myHostPort string, masterHostPort []string) (ClientNode, error) {
+	defer fmt.Println("Leaving NewClientNode")
+	fmt.Println("myhostport is", myHostPort, ", hostPort of masterNode to connect is", masterHostPort)
 
 	var a ClientNode
+
+	index := rand.New(rand.NewSource(time.Now().UnixNano())).Intn(len(masterHostPort))
+	numRetries := 3
+	dialer, err := rpc.DialHTTP("tcp", masterHostPort[index])
+	for err != nil {
+		numRetries -= 1
+		dialer, err = rpc.DialHTTP("tcp", masterHostPort[index])
+		if numRetries <= 0 {
+			return nil, errors.New("Fail to dial to master:" + masterHostPort[index])
+		}
+	}
 	var conn common.Conn
 	conn.HostPort = masterHostPort
-	//TODO dial with master hostPort
+	conn.Dialer = dialer
 
 	node := clientNode{}
 	node.conn = conn
 	node.myHostPort = myHostPort
-
 	node.linkRelationChan = make(chan linkRelation)
 	node.allLinksChan = make(chan string)
 	node.nextLinkChan = make(chan string)
 	node.visited = make(map[string]bool)
+	node.idMap = make(map[string]int)
 
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{
@@ -94,36 +123,88 @@ func NewClientNode(myHostPort string, masterHostPort string) (ClientNode, error)
 
 // Crawls the entire internet with given root url.
 func (cn *clientNode) Crawl(args *CrawlArgs, reply *CrawlReply) error {
+	defer fmt.Println("Leavin Crawl on client", cn.myHostPort)
 	fmt.Println("Crawl invoked on ", cn.myHostPort)
+
 	//set root url as the starting point of crawling
 	rootUrl := args.RootUrl
 	go func() { cn.allLinksChan <- rootUrl }()
 	go cn.checkVisited()
 
+	count := 0
 	//start to crawl!
 	for {
 		select {
-		case uri, ok := <-cn.nextLinkChan:
-			if ok {
-				_, err := cn.doCrawl(uri)
+		case uri := <-cn.nextLinkChan:
+			if count < args.NumPages {
+				rel, err := cn.doCrawl(uri)
 				if err == nil {
-					//TODO call Append on master node to persist the urls crawled
+					var appendArgs paxosrpc.AppendArgs
+					appendArgs.Key = rel.follower
+					appendArgs.Value = rel.followee
+					var appendReply paxosrpc.AppendReply
+					cn.conn.Dialer.Call("PaxosNode.Append", &appendArgs, &appendReply)
 				}
 			} else {
-				//Should stop crawling now
+				return nil
 			}
 		}
 	}
-	return errors.New("Not append to master yet.")
+	return nil
 }
 
 func (cn *clientNode) RunPageRank(args *PageRankArgs, reply *PageRankReply) error {
 	fmt.Println("RunPageRank invoked on ", cn.myHostPort)
+
+	//	//Get all page relationships from data store
+	//	var getAllLinksArgs paxosrpc.GetAllLinksArgs
+	//	var getAllLinksReply paxosrpc.GetAllLinksReply
+	//	fmt.Println("Invoking PaxosNode.GetAllLinks on", cn.conn.HostPort)
+	//	err := cn.conn.Dialer.Call("PaxosNode.GetAllLinks", &getAllLinksArgs, &getAllLinksReply)
+	//	if err != nil {
+	//		fmt.Println(err)
+	//	}
+
+	//	//TODO create a id mapping for pagerank
+	//	nextId := 0
+	//	fmt.Println("Calculating page rank...")
+	//	//calculate page rank!
+	//	pageRankEngine := pagerank.New()
+	//	for k, list := range getAllLinksReply.LinksMap{
+	//		for _, v := range list {
+	//			followeeId =
+	//			pageRankEngine.Link(0, 2)
+	//		}
+	//	}
+
+	//	pageRankEngine.Rank(0.85, tolerance, func(label int, rank float64) {
+	//		fmt.Println(label, rank)
+	//		//		rankAsPercentage := toPercentage(rank)
+	//		//		if math.Abs(rankAsPercentage - expected[label]) > tolerance {
+	//		//			t.Error("Rank for", label, "should be", expected[label], "but was", rankAsPercentage)
+	//		//		}
+	//	})
+
 	return errors.New("Not implemented yet.")
 }
 
-func (cn *clientNode) GetTopKPage(args *TopKPageArgs, reply *TopKPageReply) error {
-	fmt.Println("GetTopKPage invoked on ", cn.myHostPort)
+//func (cn *clientNode) getId() int {
+//	_, ok := cn.idMap
+//	keyId = nextId
+//	if !ok {
+//		keyId = nextId
+//		cn.idMap[k] = keyId
+//		nextId += 1
+//	}
+//}
+
+func (cn *clientNode) GetRank(args *GetRankArgs, reply *GetRankReply) error {
+	fmt.Println("GetRank invoked on ", cn.myHostPort)
+	return errors.New("Not implemented yet.")
+}
+
+func (cn *clientNode) GetLink(args *GetLinkArgs, reply *GetLinkReply) error {
+	fmt.Println("GetLink invoked on ", cn.myHostPort)
 	return errors.New("Not implemented yet.")
 }
 
