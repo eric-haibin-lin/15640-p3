@@ -96,9 +96,7 @@ sleep 1
 echo "Sleeping for 10 seconds..."
 sleep 10
 
-while [[ true ]]; do
-  #statements
-done
+
 # kill -9 ${SLAVE_NODE_PID0}
 # kill -9 ${SLAVE_NODE_PID1}
 # kill -9 ${SLAVE_NODE_PID2}

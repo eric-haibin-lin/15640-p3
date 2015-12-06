@@ -51,6 +51,7 @@ func main() {
 	} else if *opt == "getlink" {
 		fmt.Println("crunner invokes GetLink on client" )
 		var getLinkArgs client.GetLinksArgs
+		getLinkArgs.Url = absoluteUrl
 		var getLinkReply client.GetLinksReply
 		cli.GetLinks(&getLinkArgs, &getLinkReply)
 		
@@ -64,6 +65,7 @@ func main() {
 		fmt.Println("crunner invokes GetRank on client" )
 		fmt.Println("crunner invokes GetLink on client" )
 		var getRankArgs client.GetRankArgs
+		getRankArgs.Url = absoluteUrl
 		var getRankReply client.GetRankReply
 		cli.GetRank(&getRankArgs, &getRankReply)
 		

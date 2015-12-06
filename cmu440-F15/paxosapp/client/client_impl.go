@@ -145,6 +145,9 @@ func (cn *clientNode) Crawl(args *CrawlArgs, reply *CrawlReply) error {
 					appendArgs.Value = rel.followee
 					var appendReply paxosrpc.AppendReply
 					fmt.Println("Calling PaxosNode.Append")
+					for _, v := range appendArgs.Value {
+						fmt.Println("Writing", v, "with key", appendArgs.Key)
+					}
 					cn.conn.Dialer.Call("PaxosNode.Append", &appendArgs, &appendReply)
 				}
 			} else {
@@ -223,6 +226,7 @@ func (cn *clientNode) GetLinks(args *GetLinksArgs, reply *GetLinksReply) error {
 	var linksArgs paxosrpc.GetLinksArgs
 	linksArgs.Key = args.Url
 	var linksReply paxosrpc.GetLinksReply
+	fmt.Println("Calling PaxosNode.GetLinks with key", linksArgs.Key)
 	err := cn.conn.Dialer.Call("PaxosNode.GetLinks", &linksArgs, &linksReply)
 	if err != nil {
 		fmt.Println(err)
