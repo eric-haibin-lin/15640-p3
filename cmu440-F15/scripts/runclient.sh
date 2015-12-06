@@ -44,7 +44,7 @@ fi
 
 # Pick random ports between [10000, 20000).
 NODE_PORT0=$(((RANDOM % 10000) + 10000))
-MASTER_PORT=`cat hostports.config`
+MASTER_PORT=`cat paxosnodesport.txt`
 NUM=$3
 if [ "$#" != "3" ]; then
   NUM=10

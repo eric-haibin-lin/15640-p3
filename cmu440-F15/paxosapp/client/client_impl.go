@@ -51,16 +51,16 @@ type CrawlReply struct {
 	Status Status
 }
 
-type GetLinkArgs struct {
+type GetLinksArgs struct {
 	Url string
 }
 
-type GetLinkReply struct {
+type GetLinksReply struct {
 	List []string // The list of all urls
 }
 
 type GetRankArgs struct {
-	K int // Top K
+	Url string
 }
 
 type GetRankReply struct {
@@ -139,10 +139,12 @@ func (cn *clientNode) Crawl(args *CrawlArgs, reply *CrawlReply) error {
 			if count < args.NumPages {
 				rel, err := cn.doCrawl(uri)
 				if err == nil {
+					count += 1
 					var appendArgs paxosrpc.AppendArgs
 					appendArgs.Key = rel.follower
 					appendArgs.Value = rel.followee
 					var appendReply paxosrpc.AppendReply
+					fmt.Println("Calling PaxosNode.Append")
 					cn.conn.Dialer.Call("PaxosNode.Append", &appendArgs, &appendReply)
 				}
 			} else {
@@ -200,12 +202,37 @@ func (cn *clientNode) RunPageRank(args *PageRankArgs, reply *PageRankReply) erro
 
 func (cn *clientNode) GetRank(args *GetRankArgs, reply *GetRankReply) error {
 	fmt.Println("GetRank invoked on ", cn.myHostPort)
-	return errors.New("Not implemented yet.")
+
+	//	var rankArgs paxosrpc.GetRankArgs
+	//	rankArgs.Key = args.Url
+	//	var rankReply paxosrpc.GetRankReply
+	//	err := cn.conn.Dialer.Call("PaxosNode.GetRank", &rankArgs, &rankReply)
+	//	if err != nil {
+	//		fmt.Println(err)
+	//		return err
+	//	}
+	//	fmt.Println("GetLink returns list:")
+	//	for _, v := range linksReply.Value {
+	//		fmt.Println(v)
+	//	}
+	return nil
 }
 
-func (cn *clientNode) GetLink(args *GetLinkArgs, reply *GetLinkReply) error {
+func (cn *clientNode) GetLinks(args *GetLinksArgs, reply *GetLinksReply) error {
 	fmt.Println("GetLink invoked on ", cn.myHostPort)
-	return errors.New("Not implemented yet.")
+	var linksArgs paxosrpc.GetLinksArgs
+	linksArgs.Key = args.Url
+	var linksReply paxosrpc.GetLinksReply
+	err := cn.conn.Dialer.Call("PaxosNode.GetLinks", &linksArgs, &linksReply)
+	if err != nil {
+		fmt.Println(err)
+		return err
+	}
+	fmt.Println("GetLinks returns list:")
+	for _, v := range linksReply.Value {
+		fmt.Println(v)
+	}
+	return nil
 }
 
 // filterVisited checks if all links crawled are visited. If not, push it to the

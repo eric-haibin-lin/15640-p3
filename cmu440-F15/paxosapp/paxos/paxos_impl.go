@@ -405,7 +405,7 @@ func (pn *paxosNode) Append(args *paxosrpc.AppendArgs, reply *paxosrpc.AppendRep
 	rand.Seed(time.Now().UnixNano())
 	for i < NumCopies {
 		for {
-			num := rand.Intn(pn.numSlaves) + 1
+			num := rand.Intn(pn.numSlaves)
 
 			var found int
 			found = 0

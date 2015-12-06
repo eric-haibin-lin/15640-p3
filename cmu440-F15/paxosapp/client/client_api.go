@@ -5,7 +5,7 @@ package client
 // GetTopKPage returns the top k websites ordered by pagerank algorithm
 type ClientNode interface {
 	Crawl(args *CrawlArgs, reply *CrawlReply) error
-	GetLink(args *GetLinkArgs, reply *GetLinkReply) error
+	GetLinks(args *GetLinksArgs, reply *GetLinksReply) error
 	RunPageRank(args *PageRankArgs, reply *PageRankReply) error
 	GetRank(args *GetRankArgs, reply *GetRankReply) error
 }

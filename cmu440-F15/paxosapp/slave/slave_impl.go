@@ -66,6 +66,7 @@ func (sn *slaveNode) Get(args *slaverpc.GetArgs, reply *slaverpc.GetReply) error
 	defer sn.valuesMapLock.Unlock()
 	key := args.Key
 	value := sn.valuesMap[key]
+	fmt.Println("Value found for key", key, ": ", value)
 	reply.Value = value
 	return nil
 }

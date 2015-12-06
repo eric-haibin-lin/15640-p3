@@ -50,9 +50,9 @@ func main() {
 		
 	} else if *opt == "getlink" {
 		fmt.Println("crunner invokes GetLink on client" )
-		var getLinkArgs client.GetLinkArgs
-		var getLinkReply client.GetLinkReply
-		cli.GetLink(&getLinkArgs, &getLinkReply)
+		var getLinkArgs client.GetLinksArgs
+		var getLinkReply client.GetLinksReply
+		cli.GetLinks(&getLinkArgs, &getLinkReply)
 		
 	} else if *opt == "pagerank" {
 		fmt.Println("crunner invokes RunPageRank on client" )
