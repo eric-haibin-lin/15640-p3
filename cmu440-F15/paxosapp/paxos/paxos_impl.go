@@ -309,7 +309,7 @@ func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.Propose
 
 	okcount := 0
 
-	max_n := 0
+	max_n := -1
 	var max_v interface{}
 	max_v = args.V
 	//max_v := args.V
@@ -323,7 +323,7 @@ func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.Propose
 		if ret.Status == paxosrpc.OK {
 			okcount++
 		}
-		if ret.N_a != 0 && ret.N_a > max_n {
+		if ret.N_a != -1 && ret.N_a > max_n {
 			max_n = ret.N_a
 			max_v = ret.V_a
 		}
@@ -337,7 +337,7 @@ func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.Propose
 	}
 
 	var valueToPropose interface{}
-	if max_n != 0 { //someone suggested a different value
+	if max_n != -1 { //someone suggested a different value
 		valueToPropose = args.V
 	} else {
 		valueToPropose = max_v
@@ -413,7 +413,7 @@ func (pn *paxosNode) RecvPrepare(args *paxosrpc.PrepareArgs, reply *paxosrpc.Pre
 	pn.maxSeqNumSoFarLock.Lock()
 	maxNum := pn.maxSeqNumSoFar[key]
 	pn.maxSeqNumSoFarLock.Unlock()
-	
+
 	pn.acceptedValuesMapLock.Lock()
 	val, ok := pn.acceptedValuesMap[key]
 	pn.acceptedValuesMapLock.Unlock()
