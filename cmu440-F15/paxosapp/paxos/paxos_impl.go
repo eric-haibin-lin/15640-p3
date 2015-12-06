@@ -206,7 +206,17 @@ func (pn *paxosNode) GetNextProposalNumber(args *paxosrpc.ProposalNumberArgs, re
 	return nil
 }
 
-func prepare(pn *paxosNode, srvId int, key string, seqnum int, preparechan chan paxosrpc.PrepareReply) {
+type prepReplyAndTimeout struct {
+	prepReply paxosrpc.PrepareReply
+	timeout   int
+}
+
+type accReplyAndTimeout struct {
+	accReply paxosrpc.AcceptReply
+	timeout  int
+}
+
+func prepare(pn *paxosNode, srvId int, key string, seqnum int, preparechan chan prepReplyAndTimeout) {
 	/*dialer, err := rpc.DialHTTP("tcp", hostport)
 
 	if err != nil {
@@ -228,11 +238,14 @@ func prepare(pn *paxosNode, srvId int, key string, seqnum int, preparechan chan 
 		return
 	}
 
+	var ret prepReplyAndTimeout
+	ret.prepReply = reply
+	ret.timeout = 0
 	fmt.Println("Got Prepare reply from ", pn.hostMap[srvId], ". The N is ", reply.N_a, " and the value is ", reply.V_a)
-	preparechan <- reply
+	preparechan <- ret
 }
 
-func accept(pn *paxosNode, srvId int, value interface{}, key string, seqnum int, acceptchan chan paxosrpc.AcceptReply) {
+func accept(pn *paxosNode, srvId int, value interface{}, key string, seqnum int, acceptchan chan accReplyAndTimeout) {
 	/*dialer, err := rpc.DialHTTP("tcp", hostport)
 
 	if err != nil {
@@ -254,8 +267,11 @@ func accept(pn *paxosNode, srvId int, value interface{}, key string, seqnum int,
 		return
 	}
 
+	var ret accReplyAndTimeout
+	ret.accReply = reply
+	ret.timeout = 0
 	fmt.Println("Got Accept reply from ", pn.hostMap[srvId], ". The Status is ", reply.Status)
-	acceptchan <- reply
+	acceptchan <- ret
 }
 
 func commit(pn *paxosNode, srvId int, value interface{}, key string, commitchan chan int) {
@@ -280,20 +296,27 @@ func commit(pn *paxosNode, srvId int, value interface{}, key string, commitchan 
 	}
 
 	fmt.Println("Got Commit reply from ", pn.hostMap[srvId])
-	commitchan <- 1
+	commitchan <- 0
 }
 
-func wakeMeUpAfter15Seconds(preparechan chan paxosrpc.PrepareReply, acceptchan chan paxosrpc.AcceptReply,
+func wakeMeUpAfter15Seconds(preparechan chan prepReplyAndTimeout, acceptchan chan accReplyAndTimeout,
 	commitchan chan int) {
 	time.Sleep(15 * time.Second)
 
-	close(preparechan)
-	close(acceptchan)
-	close(commitchan)
+	var ret1 prepReplyAndTimeout
+	ret1.timeout = 1
+	preparechan <- ret1
+
+	var ret2 accReplyAndTimeout
+	ret2.timeout = 1
+	acceptchan <- ret2
+
+	commitchan <- 1
+
 }
 func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.ProposeReply) error {
-	preparechan := make(chan paxosrpc.PrepareReply, 100)
-	acceptchan := make(chan paxosrpc.AcceptReply, 100)
+	preparechan := make(chan prepReplyAndTimeout, 100)
+	acceptchan := make(chan accReplyAndTimeout, 100)
 	commitchan := make(chan int, 100)
 
 	fmt.Println("In Propose of ", pn.srvId)
@@ -309,23 +332,27 @@ func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.Propose
 
 	okcount := 0
 
-	max_n := -1
+	max_n := 0
 	var max_v interface{}
 	max_v = args.V
 	//max_v := args.V
 
 	for i := 0; i < pn.numNodes; i++ {
-		ret, ok := <-preparechan
-		if !ok {
+		ret, _ := <-preparechan
+		if ret.timeout == 1 {
 			fmt.Println("Didn't finish prepare stage even after 15 seconds")
 			return errors.New("Didn't finish prepare stage even after 15 seconds")
 		}
-		if ret.Status == paxosrpc.OK {
+		/*if !ok {
+			fmt.Println("Didn't finish prepare stage even after 15 seconds")
+			return errors.New("Didn't finish prepare stage even after 15 seconds")
+		}*/
+		if ret.prepReply.Status == paxosrpc.OK {
 			okcount++
 		}
-		if ret.N_a != -1 && ret.N_a > max_n {
-			max_n = ret.N_a
-			max_v = ret.V_a
+		if ret.prepReply.N_a != 0 && ret.prepReply.N_a > max_n {
+			max_n = ret.prepReply.N_a
+			max_v = ret.prepReply.V_a
 		}
 		if okcount >= ((pn.numNodes / 2) + 1) {
 			break
@@ -337,7 +364,7 @@ func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.Propose
 	}
 
 	var valueToPropose interface{}
-	if max_n != -1 { //someone suggested a different value
+	if max_n != 0 { //someone suggested a different value
 		valueToPropose = args.V
 	} else {
 		valueToPropose = max_v
@@ -351,12 +378,12 @@ func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.Propose
 	okcount = 0
 
 	for i := 0; i < pn.numNodes; i++ {
-		ret, ok := <-acceptchan
-		if !ok {
+		ret, _ := <-acceptchan
+		if ret.timeout == 1 {
 			fmt.Println("Didn't finish accept stage even after 15 seconds")
 			return errors.New("Didn't finish accept stage even after 15 seconds")
 		}
-		if ret.Status == paxosrpc.OK {
+		if ret.accReply.Status == paxosrpc.OK {
 			okcount++
 		}
 		if okcount >= ((pn.numNodes / 2) + 1) {
