@@ -49,7 +49,13 @@ func (sn *slaveNode) Append(args *slaverpc.AppendArgs, reply *slaverpc.AppendRep
 	defer sn.valuesMapLock.Unlock()
 	key := args.Key
 	value := args.Value
-	sn.valuesMap[key] = append(sn.valuesMap[key], value)
+	_, ok := sn.valuesMap[key]
+
+	if !ok {
+		sn.valuesMap[key] = make([]string, 0)
+	}
+
+	sn.valuesMap[key] = append(sn.valuesMap[key], value...)
 	return nil
 }
 

@@ -142,7 +142,7 @@ func NewPaxosNode(myHostPort string, hostMap map[int]string, numNodes, srvId, nu
 			node.paxosDialerMap[key] = dialer
 		}
 
-		fmt.Println(myHostPort, " dialed ", v, " successfully")
+		fmt.Println(myHostPort, " dialed fellow paxosnode", v, " successfully")
 	}
 
 	//get updated values map when it's a node for replacement
@@ -369,6 +369,27 @@ func (pn *paxosNode) GetAllLinks(args *paxosrpc.GetAllLinksArgs, reply *paxosrpc
 }
 
 func (pn *paxosNode) Append(args *paxosrpc.AppendArgs, reply *paxosrpc.AppendReply) error {
+
+	fmt.Println("Append called on ", pn.myHostPort, " with key = ", args.Key)
+	var appendArgs slaverpc.AppendArgs
+	appendArgs.Key = args.Key
+	appendArgs.Value = args.Value
+
+	var appendReply slaverpc.AppendReply
+	slaveList, ok := pn.valuesMap[args.Key]
+
+	if ok {
+		fmt.Println("This key already has some slaves. Calling append on them")
+
+		for _, slaveId := range slaveList {
+			err := pn.slaveDialerMap[slaveId].Call("SlaveNode.Append", &appendArgs, &appendReply)
+			if err != nil {
+				fmt.Println("Append RPC Failed on ", pn.slaveMap[slaveId])
+			}
+		}
+		return nil
+	}
+
 	var propNumArgs paxosrpc.ProposalNumberArgs
 	var propNumReply paxosrpc.ProposalNumberReply
 	propNumArgs.Key = args.Key
@@ -413,13 +434,16 @@ func (pn *paxosNode) Append(args *paxosrpc.AppendArgs, reply *paxosrpc.AppendRep
 	proposeArgs.Key = args.Key
 	proposeArgs.V = targetSlaves
 
-	pn.Propose(&proposeArgs, &proposeReply)
+	fmt.Println(pn.myHostPort, " will now propose for key = ", proposeArgs.Key, " and value = ", proposeArgs.V)
 
-	var appendArgs slaverpc.AppendArgs
-	appendArgs.Key = args.Key
-	appendArgs.Value = args.Value
+	err := pn.Propose(&proposeArgs, &proposeReply)
+	if err != nil {
+		fmt.Println("Propose failed!")
+		return errors.New("Propose failed!")
+	}
 
-	var appendReply slaverpc.AppendReply
+	fmt.Println("Propose succeeded and the value committed was ", proposeReply.V)
+
 	for _, slaveId := range proposeReply.V {
 		err := pn.slaveDialerMap[slaveId].Call("SlaveNode.Append", &appendArgs, &appendReply)
 		if err != nil {
