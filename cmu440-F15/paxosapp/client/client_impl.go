@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"github.com/cmu440-F15/paxosapp/collectlinks"
 	"github.com/cmu440-F15/paxosapp/common"
-	//"github.com/cmu440-F15/paxosapp/pagerank"
+	"github.com/cmu440-F15/paxosapp/pagerank"
 	"github.com/cmu440-F15/paxosapp/rpc/paxosrpc"
 	"math/rand"
 	"net/http"
@@ -35,6 +35,8 @@ type clientNode struct {
 	visited          map[string]bool
 	httpClient       http.Client
 	idMap            map[string]int
+	urlMap           map[int]string
+	nextId           int
 }
 
 type linkRelation struct {
@@ -108,6 +110,7 @@ func NewClientNode(myHostPort string, masterHostPort []string) (ClientNode, erro
 	node.nextLinkChan = make(chan string)
 	node.visited = make(map[string]bool)
 	node.idMap = make(map[string]int)
+	node.urlMap = make(map[int]string)
 
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{
@@ -161,47 +164,48 @@ func (cn *clientNode) Crawl(args *CrawlArgs, reply *CrawlReply) error {
 func (cn *clientNode) RunPageRank(args *PageRankArgs, reply *PageRankReply) error {
 	fmt.Println("RunPageRank invoked on ", cn.myHostPort)
 
-	//	//Get all page relationships from data store
-	//	var getAllLinksArgs paxosrpc.GetAllLinksArgs
-	//	var getAllLinksReply paxosrpc.GetAllLinksReply
-	//	fmt.Println("Invoking PaxosNode.GetAllLinks on", cn.conn.HostPort)
-	//	err := cn.conn.Dialer.Call("PaxosNode.GetAllLinks", &getAllLinksArgs, &getAllLinksReply)
-	//	if err != nil {
-	//		fmt.Println(err)
-	//	}
+	//Get all page relationships from data store
+	var getAllLinksArgs paxosrpc.GetAllLinksArgs
+	var getAllLinksReply paxosrpc.GetAllLinksReply
+	fmt.Println("Invoking PaxosNode.GetAllLinks on", cn.conn.HostPort)
+	err := cn.conn.Dialer.Call("PaxosNode.GetAllLinks", &getAllLinksArgs, &getAllLinksReply)
+	if err != nil {
+		fmt.Println(err)
+	}
 
-	//	//TODO create a id mapping for pagerank
-	//	nextId := 0
-	//	fmt.Println("Calculating page rank...")
-	//	//calculate page rank!
-	//	pageRankEngine := pagerank.New()
-	//	for k, list := range getAllLinksReply.LinksMap{
-	//		for _, v := range list {
-	//			followeeId =
-	//			pageRankEngine.Link(0, 2)
-	//		}
-	//	}
+	fmt.Println("Calculating page rank...")
+	//calculate page rank!
+	pageRankEngine := pagerank.New()
+	for k, list := range getAllLinksReply.LinksMap {
+		followerId := cn.getId(k)
+		for _, v := range list {
+			followeeId := cn.getId(v)
+			pageRankEngine.Link(followerId, followeeId)
+		}
+	}
 
-	//	pageRankEngine.Rank(0.85, tolerance, func(label int, rank float64) {
-	//		fmt.Println(label, rank)
-	//		//		rankAsPercentage := toPercentage(rank)
-	//		//		if math.Abs(rankAsPercentage - expected[label]) > tolerance {
-	//		//			t.Error("Rank for", label, "should be", expected[label], "but was", rankAsPercentage)
-	//		//		}
-	//	})
-
-	return errors.New("Not implemented yet.")
+	pageRankEngine.Rank(0.85, tolerance, func(label int, rank float64) {
+		fmt.Println(cn.urlMap[label], rank*100)
+		//TODO call PutRank() on Master Node
+		//		rankAsPercentage := toPercentage(rank)
+		//		if math.Abs(rankAsPercentage - expected[label]) > tolerance {
+		//			t.Error("Rank for", label, "should be", expected[label], "but was", rankAsPercentage)
+		//		}
+	})
+	return nil
 }
 
-//func (cn *clientNode) getId() int {
-//	_, ok := cn.idMap
-//	keyId = nextId
-//	if !ok {
-//		keyId = nextId
-//		cn.idMap[k] = keyId
-//		nextId += 1
-//	}
-//}
+// getId returns the id mapped from given url
+func (cn *clientNode) getId(url string) int {
+	id, ok := cn.idMap[url]
+	//The url doesn't exist in the current url - id map
+	if !ok {
+		cn.idMap[url] = cn.nextId
+		cn.urlMap[cn.nextId] = url
+		cn.nextId += 1
+	}
+	return id
+}
 
 func (cn *clientNode) GetRank(args *GetRankArgs, reply *GetRankReply) error {
 	fmt.Println("GetRank invoked on ", cn.myHostPort)

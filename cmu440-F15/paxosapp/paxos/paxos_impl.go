@@ -336,7 +336,7 @@ func wakeMeUpAfter15Seconds(preparechan chan prepReplyAndTimeout, acceptchan cha
 }
 
 func (pn *paxosNode) GetLinks(args *paxosrpc.GetLinksArgs, reply *paxosrpc.GetLinksReply) error {
-	fmtPrintln("GetLinks invoked on Node ", pn.srvId, " for key ", args.Key)
+	fmt.Println("GetLinks invoked on Node ", pn.srvId, " for key ", args.Key)
 	for _, slaveId := range pn.valuesMap[args.Key] {
 		var getArgs slaverpc.GetArgs
 		getArgs.Key = args.Key
@@ -346,7 +346,7 @@ func (pn *paxosNode) GetLinks(args *paxosrpc.GetLinksArgs, reply *paxosrpc.GetLi
 		err := pn.slaveDialerMap[slaveId].Call("SlaveNode.Get", &getArgs, &getReply)
 		if err == nil {
 			reply.Value = getReply.Value
-			fmt.Println("Slave ", slaveId, " has the data for ", args.Key), "!")
+			fmt.Println("Slave ", slaveId, " has the data for ", args.Key, "!")
 			return nil
 		}
 	}
@@ -354,7 +354,7 @@ func (pn *paxosNode) GetLinks(args *paxosrpc.GetLinksArgs, reply *paxosrpc.GetLi
 }
 
 func (pn *paxosNode) GetAllLinks(args *paxosrpc.GetAllLinksArgs, reply *paxosrpc.GetAllLinksReply) error {
-
+	reply.LinksMap = make(map[string][]string)
 	for key, value := range pn.valuesMap {
 		var getArgs slaverpc.GetArgs
 		getArgs.Key = key
