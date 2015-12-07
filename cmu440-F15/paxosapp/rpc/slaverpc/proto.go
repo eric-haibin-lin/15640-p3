@@ -19,3 +19,20 @@ type AppendArgs struct {
 type AppendReply struct {
 	//Nothing to reply here
 }
+
+type GetRankArgs struct {
+	Key string
+}
+
+type GetRankReply struct {
+	Value float64
+}
+
+type PutRankArgs struct {
+	Key   string
+	Value float64
+}
+
+type PutRankReply struct {
+	//nothing here
+}

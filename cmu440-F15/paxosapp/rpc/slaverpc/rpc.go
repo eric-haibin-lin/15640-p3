@@ -3,6 +3,8 @@ package slaverpc
 type RemoteSlaveNode interface {
 	Append(args *AppendArgs, reply *AppendReply) error
 	Get(args *GetArgs, reply *GetReply) error
+	PutRank(args *PutRankArgs, reply *PutRankReply) error
+	GetRank(args *GetRankArgs, reply *GetRankReply) error
 }
 
 type SlaveNode struct {

@@ -11,7 +11,9 @@ import (
 
 type slaveNode struct {
 	valuesMap     map[string][]string
+	ranksMap      map[string]float64
 	valuesMapLock *sync.Mutex
+	ranksMapLock  *sync.Mutex
 	srvId         int
 	myHostPort    string
 }
@@ -20,7 +22,9 @@ func NewSlaveNode(myHostPort string, srvId int) (SlaveNode, error) {
 	var a slaverpc.RemoteSlaveNode
 	node := slaveNode{}
 	node.valuesMap = make(map[string][]string)
+	node.ranksMap = make(map[string]float64)
 	node.valuesMapLock = &sync.Mutex{}
+	node.ranksMapLock = &sync.Mutex{}
 	node.srvId = srvId
 	node.myHostPort = myHostPort
 
@@ -70,5 +74,28 @@ func (sn *slaveNode) Get(args *slaverpc.GetArgs, reply *slaverpc.GetReply) error
 	value := sn.valuesMap[key]
 	fmt.Println("Value found for key", key, ": ", value)
 	reply.Value = value
+	return nil
+}
+
+func (sn *slaveNode) GetRank(args *slaverpc.GetRankArgs, reply *slaverpc.GetRankReply) error {
+	fmt.Println("GetRank invoked on ", sn.srvId)
+	defer fmt.Println("Leaving GetRank on ", sn.srvId)
+	sn.ranksMapLock.Lock()
+	defer sn.ranksMapLock.Unlock()
+	key := args.Key
+	value := sn.ranksMap[key]
+	fmt.Println("Rank found for key", key, ": ", value)
+	reply.Value = value
+	return nil
+}
+
+func (sn *slaveNode) PutRank(args *slaverpc.PutRankArgs, reply *slaverpc.PutRankReply) error {
+	fmt.Println("PutRank invoked on ", sn.srvId)
+	defer fmt.Println("Leaving PutRank on ", sn.srvId)
+	sn.ranksMapLock.Lock()
+	defer sn.ranksMapLock.Unlock()
+	key := args.Key
+	sn.ranksMap[key] = args.Value
+	fmt.Println("Rank Put for key", key, ": ", sn.ranksMap[key])
 	return nil
 }
