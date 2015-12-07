@@ -448,7 +448,12 @@ func (pn *paxosNode) GetRank(args *paxosrpc.GetRankArgs, reply *paxosrpc.GetRank
 
 func (pn *paxosNode) GetLinks(args *paxosrpc.GetLinksArgs, reply *paxosrpc.GetLinksReply) error {
 	fmt.Println("GetLinks invoked on Node ", pn.srvId, " for key ", args.Key)
-	for _, slaveId := range pn.valuesMap[args.Key] {
+	list, ok := pn.valuesMap[args.Key]
+	if !ok {
+		fmt.Println("Key", args.Key, "not found")
+		return errors.New("Key " + args.Key + " not found")
+	}
+	for _, slaveId := range list {
 		var getArgs slaverpc.GetArgs
 		getArgs.Key = args.Key
 
