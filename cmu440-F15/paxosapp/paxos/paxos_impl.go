@@ -335,6 +335,91 @@ func wakeMeUpAfter15Seconds(preparechan chan prepReplyAndTimeout, acceptchan cha
 
 }
 
+func (pn *paxosNode) PutRank(args *paxosrpc.PutRankArgs, reply *paxosrpc.PutRankReply) error {
+	fmt.Println("PutRank called on ", pn.myHostPort, " with key = ", args.Key)
+	var putargs slaverpc.PutRankArgs
+	putargs.Key = args.Key
+	putargs.Value = args.Value
+
+	var putreply slaverpc.PutRankReply
+	slaveList, ok := pn.valuesMap[args.Key]
+
+	if ok {
+		fmt.Println("This key already has some slaves. Calling PutRank on them")
+
+		for _, slaveId := range slaveList {
+			err := pn.slaveDialerMap[slaveId].Call("SlaveNode.PutRank", &putargs, &putreply)
+			if err != nil {
+				fmt.Println("PutRank RPC Failed on ", pn.slaveMap[slaveId])
+			}
+		}
+		return nil
+	}
+
+	var propNumArgs paxosrpc.ProposalNumberArgs
+	var propNumReply paxosrpc.ProposalNumberReply
+	propNumArgs.Key = args.Key
+
+	pn.GetNextProposalNumber(&propNumArgs, &propNumReply)
+
+	fmt.Println("Got proposal number as ", propNumReply.N)
+
+	var targetSlaves [NumCopies]int
+	//now select a group of slaves to store this value on
+
+	i := 0
+	rand.Seed(time.Now().UnixNano())
+	for i < NumCopies {
+		for {
+			num := rand.Intn(pn.numSlaves)
+
+			var found int
+			found = 0
+			//fmt.Println("The slice is ", targetSlaves)
+			for _, val := range targetSlaves {
+				//fmt.Println("j is ", j)
+				if val == num {
+					found = 1
+					break
+				}
+			}
+			if found == 0 {
+				targetSlaves[i] = num
+				break
+			}
+		}
+		i += 1
+	}
+
+	fmt.Println("Generated the targetSlaves slice as ", targetSlaves)
+
+	var proposeArgs paxosrpc.ProposeArgs
+	var proposeReply paxosrpc.ProposeReply
+
+	proposeArgs.N = propNumReply.N
+	proposeArgs.Key = args.Key
+	proposeArgs.V = targetSlaves
+
+	fmt.Println(pn.myHostPort, " will now propose for key = ", proposeArgs.Key, " and value = ", proposeArgs.V)
+
+	err := pn.Propose(&proposeArgs, &proposeReply)
+	if err != nil {
+		fmt.Println("Propose failed!")
+		return errors.New("Propose failed!")
+	}
+
+	fmt.Println("Propose succeeded and the value committed was ", proposeReply.V)
+
+	for _, slaveId := range proposeReply.V {
+		err := pn.slaveDialerMap[slaveId].Call("SlaveNode.PutRank", &putargs, &putreply)
+		if err != nil {
+			fmt.Println("PutRank RPC Failed on ", pn.slaveMap[slaveId])
+		}
+	}
+
+	return nil
+}
+
 func (pn *paxosNode) GetRank(args *paxosrpc.GetRankArgs, reply *paxosrpc.GetRankReply) error {
 	fmt.Println("GetRank invoked on Node ", pn.srvId, " for key ", args.Key)
 

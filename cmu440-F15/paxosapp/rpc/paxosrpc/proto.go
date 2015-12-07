@@ -103,6 +103,15 @@ type GetRankReply struct {
 	Value float64
 }
 
+type PutRankArgs struct {
+	Key   string
+	Value float64
+}
+
+type PutRankReply struct {
+	//nothing to be returned
+}
+
 type GetLinksArgs struct {
 	Key string
 }

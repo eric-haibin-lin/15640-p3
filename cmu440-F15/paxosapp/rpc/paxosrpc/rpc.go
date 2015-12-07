@@ -56,6 +56,9 @@ type RemotePaxosNode interface {
 
 	// Get Rank
 	GetRank(args *GetRankArgs, reply *GetRankReply) error
+
+	// Put Rank
+	PutRank(args *PutRankArgs, reply *PutRankReply) error
 }
 
 type PaxosNode struct {
