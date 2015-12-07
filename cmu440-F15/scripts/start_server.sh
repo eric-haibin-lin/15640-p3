@@ -96,17 +96,20 @@ sleep 1
 echo "Sleeping for 10 seconds..."
 sleep 10
 
+rm server_log.txt 2> /dev/null
+# slave node to kill.
+echo ${SLAVE_NODE_PID0} >> server_log.txt
+echo ${SLAVE_NODE_PID1} >> server_log.txt
+echo ${SLAVE_NODE_PID2} >> server_log.txt
+echo ${SLAVE_NODE_PID3} >> server_log.txt
+echo ${SLAVE_NODE_PID4} >> server_log.txt
+echo ${SLAVE_NODE_PID5} >> server_log.txt
+echo ${SLAVE_NODE_PID5} >> server_log.txt
 
-# kill -9 ${SLAVE_NODE_PID0}
-# kill -9 ${SLAVE_NODE_PID1}
-# kill -9 ${SLAVE_NODE_PID2}
-# kill -9 ${SLAVE_NODE_PID3}
-# kill -9 ${SLAVE_NODE_PID4}
-# kill -9 ${SLAVE_NODE_PID5}
 
-# Kill paxos node.
-# kill -9 ${PAXOS_NODE_PID0}
-# kill -9 ${PAXOS_NODE_PID1}
-# kill -9 ${PAXOS_NODE_PID2}
+# paxos node to kill.
+echo ${PAXOS_NODE_PID0} >> server_log.txt
+echo ${PAXOS_NODE_PID1} >> server_log.txt
+echo ${PAXOS_NODE_PID2} >> server_log.txt
 
 # exit
