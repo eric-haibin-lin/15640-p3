@@ -66,7 +66,7 @@ type GetRankArgs struct {
 }
 
 type GetRankReply struct {
-	List []string // The list of top K urls
+	Value float64
 }
 
 type PageRankArgs struct {
@@ -186,11 +186,15 @@ func (cn *clientNode) RunPageRank(args *PageRankArgs, reply *PageRankReply) erro
 
 	pageRankEngine.Rank(0.85, tolerance, func(label int, rank float64) {
 		fmt.Println(cn.urlMap[label], rank*100)
-		//TODO call PutRank() on Master Node
-		//		rankAsPercentage := toPercentage(rank)
-		//		if math.Abs(rankAsPercentage - expected[label]) > tolerance {
-		//			t.Error("Rank for", label, "should be", expected[label], "but was", rankAsPercentage)
-		//		}
+		//Put all page ranks to data store
+		var putRankArgs paxosrpc.PutRankArgs
+		putRankArgs.Key = cn.urlMap[label]
+		putRankArgs.Value = rank * 100
+		var putRankReply paxosrpc.PutRankReply
+		err := cn.conn.Dialer.Call("PaxosNode.PutRank", &putRankArgs, &putRankReply)
+		if err != nil {
+			fmt.Println(err)
+		}
 	})
 	return nil
 }
@@ -209,19 +213,16 @@ func (cn *clientNode) getId(url string) int {
 
 func (cn *clientNode) GetRank(args *GetRankArgs, reply *GetRankReply) error {
 	fmt.Println("GetRank invoked on ", cn.myHostPort)
-
-	//	var rankArgs paxosrpc.GetRankArgs
-	//	rankArgs.Key = args.Url
-	//	var rankReply paxosrpc.GetRankReply
-	//	err := cn.conn.Dialer.Call("PaxosNode.GetRank", &rankArgs, &rankReply)
-	//	if err != nil {
-	//		fmt.Println(err)
-	//		return err
-	//	}
-	//	fmt.Println("GetLink returns list:")
-	//	for _, v := range linksReply.Value {
-	//		fmt.Println(v)
-	//	}
+	var rankArgs paxosrpc.GetRankArgs
+	rankArgs.Key = args.Url
+	var rankReply paxosrpc.GetRankReply
+	err := cn.conn.Dialer.Call("PaxosNode.GetRank", &rankArgs, &rankReply)
+	if err != nil {
+		fmt.Println(err)
+		return err
+	}
+	fmt.Println("GetRank returns value:", rankReply.Value)
+	reply.Value = rankReply.Value
 	return nil
 }
 
@@ -240,6 +241,7 @@ func (cn *clientNode) GetLinks(args *GetLinksArgs, reply *GetLinksReply) error {
 	for _, v := range linksReply.Value {
 		fmt.Println(v)
 	}
+	reply.List = linksReply.Value
 	return nil
 }
 

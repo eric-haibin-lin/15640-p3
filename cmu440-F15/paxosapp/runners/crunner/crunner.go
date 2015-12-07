@@ -35,7 +35,7 @@ func main() {
 		log.Fatalln("Failed to create client node:", err)
 	}
 
-	var absoluteUrl string
+	absoluteUrl := *url
 	if !strings.Contains(*url, "http://") && !strings.Contains(*url, "https://") {
 		absoluteUrl = "http://" + *url
 	}
