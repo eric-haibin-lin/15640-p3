@@ -335,6 +335,32 @@ func wakeMeUpAfter15Seconds(preparechan chan prepReplyAndTimeout, acceptchan cha
 
 }
 
+func (pn *paxosNode) GetRank(args *paxosrpc.GetRankArgs, reply *paxosrpc.GetRankReply) error {
+	fmt.Println("GetRank invoked on Node ", pn.srvId, " for key ", args.Key)
+
+	_, ok := pn.valuesMap[args.Key]
+
+	if !ok {
+		fmt.Println("Key not found")
+		return errors.New("Key not found")
+	}
+
+	for _, slaveId := range pn.valuesMap[args.Key] {
+		var getRankArgs slaverpc.GetRankArgs
+		getRankArgs.Key = args.Key
+
+		var getRankReply slaverpc.GetRankReply
+		fmt.Println("Asking slave ", slaveId)
+		err := pn.slaveDialerMap[slaveId].Call("SlaveNode.GetRank", &getRankArgs, &getRankReply)
+		if err == nil {
+			reply.Value = getRankReply.Value
+			fmt.Println("Slave ", slaveId, " has the data for ", args.Key, "!")
+			return nil
+		}
+	}
+	return errors.New("No slave replied.")
+}
+
 func (pn *paxosNode) GetLinks(args *paxosrpc.GetLinksArgs, reply *paxosrpc.GetLinksReply) error {
 	fmt.Println("GetLinks invoked on Node ", pn.srvId, " for key ", args.Key)
 	for _, slaveId := range pn.valuesMap[args.Key] {

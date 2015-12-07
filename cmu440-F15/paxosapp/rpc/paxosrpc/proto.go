@@ -95,6 +95,14 @@ type GetAllLinksReply struct {
 	LinksMap map[string][]string
 }
 
+type GetRankArgs struct {
+	Key string
+}
+
+type GetRankReply struct {
+	Value float64
+}
+
 type GetLinksArgs struct {
 	Key string
 }

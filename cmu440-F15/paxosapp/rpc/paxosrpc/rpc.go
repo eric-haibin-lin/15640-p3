@@ -53,6 +53,9 @@ type RemotePaxosNode interface {
 
 	// Append some links
 	Append(args *AppendArgs, reply *AppendReply) error
+
+	// Get Rank
+	GetRank(args *GetRankArgs, reply *GetRankReply) error
 }
 
 type PaxosNode struct {
