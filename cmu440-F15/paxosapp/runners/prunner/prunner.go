@@ -18,6 +18,7 @@ var (
 	numRetries = flag.Int("retries", 5, "number of times a node should retry dialing another node")
 	slaveports = flag.String("slaveports", "", "ports for all slave nodes")
 	numslaves  = flag.Int("numslaves", 0, "the number of slaves in the ring")
+	replace    = flag.Bool("replace", false, "whether it's a replacement of existing Paxos Nodes")
 )
 
 func init() {
@@ -45,7 +46,13 @@ func main() {
 	}
 	// Create and start the Paxos Node.
 
-	_, err := paxos.NewPaxosNode(hostMap[*nodeID], hostMap, *numNodes, *nodeID, *numRetries, false, slaveMap, *numslaves)
+	var err error
+	if *replace {
+		_, err = paxos.NewPaxosNode(hostMap[*nodeID], hostMap, *numNodes, *nodeID, *numRetries, true, slaveMap, *numslaves)
+	} else {
+		_, err = paxos.NewPaxosNode(hostMap[*nodeID], hostMap, *numNodes, *nodeID, *numRetries, false, slaveMap, *numslaves)
+	}
+
 	if err != nil {
 		log.Fatalln("Failed to create paxos node:", err)
 	}

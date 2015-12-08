@@ -172,7 +172,16 @@ func NewPaxosNode(myHostPort string, hostMap map[int]string, numNodes, srvId, nu
 		var f interface{}
 		json.Unmarshal(reply.Data, &f)
 		node.valuesMapLock.Lock()
-		node.valuesMap = f.(map[string][NumCopies]int)
+		//Convert []interface{} to [numCopies]int by iterating the interface{} slice
+		for key, arr := range  f.(map[string]interface{}){
+			slices := arr.([]interface{})
+			var copies [NumCopies]int	
+			for index, value := range slices {
+				fmt.Println(index, int(value.(float64)))
+				copies[index] = int(value.(float64))
+			}
+			node.valuesMap[key] = copies
+		}
 		node.valuesMapLock.Unlock()
 
 		fmt.Println("Received values from peers. The value map has the following entries:")
@@ -203,7 +212,7 @@ func NewPaxosNode(myHostPort string, hostMap map[int]string, numNodes, srvId, nu
 		}
 	}
 
-	// now try dialing all client nodes.. they should ideally already be up
+	// now try dialing all slave nodes.. they should ideally already be up
 	for k, v := range node.slaveMap {
 		dialer, err := rpc.DialHTTP("tcp", v)
 
