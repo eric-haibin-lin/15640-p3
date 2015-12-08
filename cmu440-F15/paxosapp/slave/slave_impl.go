@@ -19,6 +19,7 @@ type slaveNode struct {
 }
 
 func NewSlaveNode(myHostPort string, srvId int) (SlaveNode, error) {
+	fmt.Println("NewSlaveNode invoked on", srvId)
 	var a slaverpc.RemoteSlaveNode
 	node := slaveNode{}
 	node.valuesMap = make(map[string][]string)
