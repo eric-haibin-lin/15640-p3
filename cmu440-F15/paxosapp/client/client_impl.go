@@ -11,7 +11,6 @@ import (
 	"math/rand"
 	"net/http"
 	"net/rpc"
-	"net/url"
 	"time"
 )
 
@@ -23,20 +22,26 @@ const (
 )
 
 const (
-	tolerance = 0.0001
+	tolerance         = 0.0001 //the default tolerance when running pagerank algorithm
+	followProbability = 0.85   //the defaul probabilitic assumption of following a link
 )
 
 type clientNode struct {
-	conn             common.Conn
-	myHostPort       string
+	conn       common.Conn
+	myHostPort string
+	//a channel to receive all url's relationship before writing to CrawlStore
 	linkRelationChan chan linkRelation
 	allLinksChan     chan string
-	nextLinkChan     chan string
-	visited          map[string]bool
-	httpClient       http.Client
-	idMap            map[string]int
-	urlMap           map[int]string
-	nextId           int
+	//a channel to receive all url's to crawl next time
+	nextLinkChan chan string
+	//a map to indicate whether the link has been crawled or not
+	visited map[string]bool
+	//the http client who fetches the page
+	httpClient http.Client
+	//a mapping between the url and its id for pagerank calculation
+	idMap  map[string]int
+	urlMap map[int]string
+	nextId int
 }
 
 type linkRelation struct {
@@ -87,7 +92,7 @@ func NewClientNode(myHostPort string, masterHostPort []string) (ClientNode, erro
 	fmt.Println("myhostport is", myHostPort, ", hostPort of masterNode to connect is", masterHostPort)
 
 	var a ClientNode
-
+	//Pick a master node and dial on it
 	index := rand.New(rand.NewSource(time.Now().UnixNano())).Intn(len(masterHostPort))
 	numRetries := 3
 	dialer, err := rpc.DialHTTP("tcp", masterHostPort[index])
@@ -98,10 +103,10 @@ func NewClientNode(myHostPort string, masterHostPort []string) (ClientNode, erro
 			return nil, errors.New("Fail to dial to master:" + masterHostPort[index])
 		}
 	}
+	//Save the hostport and dialer for master node, initialize basic member variables
 	var conn common.Conn
 	conn.HostPort = masterHostPort
 	conn.Dialer = dialer
-
 	node := clientNode{}
 	node.conn = conn
 	node.myHostPort = myHostPort
@@ -112,6 +117,7 @@ func NewClientNode(myHostPort string, masterHostPort []string) (ClientNode, erro
 	node.idMap = make(map[string]int)
 	node.urlMap = make(map[int]string)
 
+	// Initialize the http client for the crawler
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: true,
@@ -120,11 +126,10 @@ func NewClientNode(myHostPort string, masterHostPort []string) (ClientNode, erro
 	node.httpClient = http.Client{Transport: transport}
 
 	a = &node
-
 	return a, nil
 }
 
-// Crawls the entire internet with given root url.
+// Crawls the internet with given root url until it reaches the number of pages sepecified.
 func (cn *clientNode) Crawl(args *CrawlArgs, reply *CrawlReply) error {
 	defer fmt.Println("Leavin Crawl on client", cn.myHostPort)
 	fmt.Println("Crawl invoked on ", cn.myHostPort)
@@ -134,15 +139,17 @@ func (cn *clientNode) Crawl(args *CrawlArgs, reply *CrawlReply) error {
 	go func() { cn.allLinksChan <- rootUrl }()
 	go cn.checkVisited()
 
+	//start to crawl and count the number of pages crawled!
 	count := 0
-	//start to crawl!
 	for {
 		select {
 		case uri := <-cn.nextLinkChan:
+			//get the next link and crawl all pages starting from there
 			if count < args.NumPages {
 				rel, err := cn.doCrawl(uri)
 				if err == nil {
 					count += 1
+					//Writing the crawl result to CrawlStore
 					var appendArgs paxosrpc.AppendArgs
 					appendArgs.Key = rel.follower
 					appendArgs.Value = rel.followee
@@ -161,10 +168,13 @@ func (cn *clientNode) Crawl(args *CrawlArgs, reply *CrawlReply) error {
 	return nil
 }
 
+// RunRageRank retrieves all the crawled link relationships from CrawlStore and runs
+// pagerank algorithm on them. It also saves the page rank of each url back to CrawlStore
+// for further references
 func (cn *clientNode) RunPageRank(args *PageRankArgs, reply *PageRankReply) error {
 	fmt.Println("RunPageRank invoked on ", cn.myHostPort)
 
-	//Get all page relationships from data store
+	//Get all page relationships from CrawlStore
 	var getAllLinksArgs paxosrpc.GetAllLinksArgs
 	var getAllLinksReply paxosrpc.GetAllLinksReply
 	fmt.Println("Invoking PaxosNode.GetAllLinks on", cn.conn.HostPort)
@@ -173,7 +183,7 @@ func (cn *clientNode) RunPageRank(args *PageRankArgs, reply *PageRankReply) erro
 		fmt.Println(err)
 	}
 
-	fmt.Println("Calculating page rank...")
+	fmt.Println("Calculating page rank on all links...")
 	//calculate page rank!
 	pageRankEngine := pagerank.New()
 	for k, list := range getAllLinksReply.LinksMap {
@@ -183,10 +193,9 @@ func (cn *clientNode) RunPageRank(args *PageRankArgs, reply *PageRankReply) erro
 			pageRankEngine.Link(followerId, followeeId)
 		}
 	}
-
-	pageRankEngine.Rank(0.85, tolerance, func(label int, rank float64) {
+	//Save all page rank results to CrawlStore
+	pageRankEngine.Rank(followProbability, tolerance, func(label int, rank float64) {
 		fmt.Println(cn.urlMap[label], rank*100)
-		//Put all page ranks to data store
 		var putRankArgs paxosrpc.PutRankArgs
 		putRankArgs.Key = cn.urlMap[label]
 		putRankArgs.Value = rank * 100
@@ -202,7 +211,7 @@ func (cn *clientNode) RunPageRank(args *PageRankArgs, reply *PageRankReply) erro
 // getId returns the id mapped from given url
 func (cn *clientNode) getId(url string) int {
 	id, ok := cn.idMap[url]
-	//The url doesn't exist in the current url - id map
+	//If url doesn't exist in the current url - id map, create a new mapping for it
 	if !ok {
 		cn.idMap[url] = cn.nextId
 		cn.urlMap[cn.nextId] = url
@@ -211,6 +220,7 @@ func (cn *clientNode) getId(url string) int {
 	return id
 }
 
+// GetRank fetches the page rank for the requested url from CrawlStore
 func (cn *clientNode) GetRank(args *GetRankArgs, reply *GetRankReply) error {
 	fmt.Println("GetRank invoked on ", cn.myHostPort)
 	var rankArgs paxosrpc.GetRankArgs
@@ -226,6 +236,7 @@ func (cn *clientNode) GetRank(args *GetRankArgs, reply *GetRankReply) error {
 	return nil
 }
 
+// GetLinks fetches all links contained in the given link (if any)
 func (cn *clientNode) GetLinks(args *GetLinksArgs, reply *GetLinksReply) error {
 	fmt.Println("GetLink invoked on ", cn.myHostPort)
 	var linksArgs paxosrpc.GetLinksArgs
@@ -259,7 +270,7 @@ func (cn *clientNode) checkVisited() {
 // doCrawl fetches the webpage and collects the links contained in this webpage
 func (cn *clientNode) doCrawl(uri string) (linkRelation, error) {
 	var rel linkRelation
-	rel.follower = uri
+	rel.follower = common.RemoveHttp(uri)
 	rel.followee = make([]string, 0)
 	resp, err := cn.httpClient.Get(uri)
 	if err != nil {
@@ -270,10 +281,11 @@ func (cn *clientNode) doCrawl(uri string) (linkRelation, error) {
 	fmt.Println("fetched ", uri)
 	links := collectlinks.All(resp.Body)
 	for _, link := range links {
-		absolute := getAbsoluteUrl(link, uri)
+		absolute := common.GetAbsoluteUrl(link, uri)
 		if absolute != "" {
-			rel.followee = append(rel.followee, absolute)
 			go func() { cn.allLinksChan <- absolute }()
+			removeHttps := common.RemoveHttp(absolute)
+			rel.followee = append(rel.followee, removeHttps)
 		}
 	}
 	/*fmt.Print("New link relation: ", rel.follower, " ========> ")
@@ -282,23 +294,4 @@ func (cn *clientNode) doCrawl(uri string) (linkRelation, error) {
 	}
 	fmt.Println()*/
 	return rel, nil
-}
-
-// getAbsoluteUrl returns the absolute url based on href contained in the webpage
-// and the base url information. (e.g. it turns a /language_tool href link in
-// http://www.google.com into http://www.google.com/language_tool)
-func getAbsoluteUrl(href, base string) string {
-	uri, err := url.Parse(href)
-	//abandon broken href
-	if err != nil {
-		return ""
-	}
-	//abandon broken base url
-	baseUrl, err := url.Parse(base)
-	if err != nil {
-		return ""
-	}
-	//resolve and generate absolute url
-	uri = baseUrl.ResolveReference(uri)
-	return uri.String()
 }

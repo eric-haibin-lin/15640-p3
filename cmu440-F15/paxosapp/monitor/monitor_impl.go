@@ -99,6 +99,6 @@ func (sn *monitorNode) CheckHealth() {
 				delete(sn.slaveHeartBeatMap, index)
 			}
 		}*/
-		time.Sleep(time.Second * 7)
+		time.Sleep(time.Second * 6)
 	}
 }
