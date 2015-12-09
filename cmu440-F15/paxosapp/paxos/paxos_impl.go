@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/cmu440-F15/paxosapp/common"
+	"github.com/cmu440-F15/paxosapp/rpc/monitorrpc"
 	"github.com/cmu440-F15/paxosapp/rpc/paxosrpc"
 	"github.com/cmu440-F15/paxosapp/rpc/slaverpc"
 	"math/rand"
@@ -20,6 +22,7 @@ const (
 
 type paxosNode struct {
 	myHostPort     string
+	monitor        common.Conn
 	numNodes       int
 	numSlaves      int
 	srvId          int
@@ -61,7 +64,7 @@ type paxosNode struct {
 // hostMap is a map from node IDs to their hostports, numNodes is the number
 // of nodes in the ring, replace is a flag which indicates whether this node
 // is a replacement for a node which failed.
-func NewPaxosNode(myHostPort string, hostMap map[int]string, numNodes, srvId, numRetries int, replace bool, slaveMap map[int]string, numSlaves int) (PaxosNode, error) {
+func NewPaxosNode(myHostPort, monitorHostPort string, hostMap map[int]string, numNodes, srvId, numRetries int, replace bool, slaveMap map[int]string, numSlaves int) (PaxosNode, error) {
 	fmt.Println("myhostport is ", myHostPort, "Numnodes is ", numNodes, "srvid is ", srvId)
 
 	var a paxosrpc.RemotePaxosNode
@@ -173,9 +176,9 @@ func NewPaxosNode(myHostPort string, hostMap map[int]string, numNodes, srvId, nu
 		json.Unmarshal(reply.Data, &f)
 		node.valuesMapLock.Lock()
 		//Convert []interface{} to [numCopies]int by iterating the interface{} slice
-		for key, arr := range  f.(map[string]interface{}){
+		for key, arr := range f.(map[string]interface{}) {
 			slices := arr.([]interface{})
-			var copies [NumCopies]int	
+			var copies [NumCopies]int
 			for index, value := range slices {
 				fmt.Println(index, int(value.(float64)))
 				copies[index] = int(value.(float64))
@@ -240,6 +243,8 @@ func NewPaxosNode(myHostPort string, hostMap map[int]string, numNodes, srvId, nu
 
 		fmt.Println(myHostPort, " dialed slave ", v, " successfully")
 	}
+
+	go (&node).HeartBeat(monitorHostPort)
 
 	return a, nil
 }
@@ -832,6 +837,39 @@ func (pn *paxosNode) RecvReplaceCatchup(args *paxosrpc.ReplaceCatchupArgs, reply
 	}
 	reply.Data = marshaledMap
 	return nil
+}
+
+func (pn *paxosNode) HeartBeat(hostPort string) {
+	fmt.Println("Heartbeat invoked on Master node", pn.srvId)
+	for {
+		time.Sleep(time.Second * 2)
+		fmt.Println("Try dialing Monitor node from Master", pn.srvId)
+		var monitor common.Conn
+		hostPorts := make([]string, 0)
+		hostPorts = append(hostPorts, hostPort)
+		monitorDialer, err := rpc.DialHTTP("tcp", hostPort)
+		monitor.HostPort = hostPorts
+		monitor.Dialer = monitorDialer
+		if err != nil {
+			fmt.Println(err)
+		} else {
+			pn.monitor = monitor
+			break
+		}
+	}
+
+	for {
+		var args monitorrpc.HeartBeatArgs
+		var reply monitorrpc.HeartBeatReply
+		args.Id = pn.srvId
+		args.Type = monitorrpc.Master
+		fmt.Println("Calling MonitorNode.HeartBeat to monitor node")
+		err := pn.monitor.Dialer.Call("MonitorNode.HeartBeat", &args, &reply)
+		if err != nil {
+			fmt.Println(err)
+		}
+		time.Sleep(time.Second * 3)
+	}
 }
 
 /*
