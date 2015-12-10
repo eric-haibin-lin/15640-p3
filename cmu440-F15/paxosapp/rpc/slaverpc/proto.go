@@ -8,7 +8,8 @@ type GetArgs struct {
 }
 
 type GetReply struct {
-	Value []string
+	Value  []string
+	Status int
 }
 
 type AppendArgs struct {

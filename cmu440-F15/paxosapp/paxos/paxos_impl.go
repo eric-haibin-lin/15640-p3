@@ -459,7 +459,7 @@ func (pn *paxosNode) GetRank(args *paxosrpc.GetRankArgs, reply *paxosrpc.GetRank
 		getRankArgs.Key = args.Key
 
 		var getRankReply slaverpc.GetRankReply
-		fmt.Println("Asking slave ", slaveId)
+		//fmt.Println("Asking slave ", slaveId)
 		err := pn.slaveDialerMap[slaveId].Call("SlaveNode.GetRank", &getRankArgs, &getRankReply)
 		if err == nil {
 			reply.Value = getRankReply.Value
@@ -482,9 +482,9 @@ func (pn *paxosNode) GetLinks(args *paxosrpc.GetLinksArgs, reply *paxosrpc.GetLi
 		getArgs.Key = args.Key
 
 		var getReply slaverpc.GetReply
-		fmt.Println("Asking slave ", slaveId)
+		//fmt.Println("Asking slave ", slaveId)
 		err := pn.slaveDialerMap[slaveId].Call("SlaveNode.Get", &getArgs, &getReply)
-		if err == nil {
+		if err == nil && getReply.Status == 1 {
 			reply.Value = getReply.Value
 			fmt.Println("Slave ", slaveId, " has the data for ", args.Key, "!")
 			return nil
@@ -503,9 +503,9 @@ func (pn *paxosNode) GetAllLinks(args *paxosrpc.GetAllLinksArgs, reply *paxosrpc
 		var getReply slaverpc.GetReply
 		if !strings.HasSuffix(key, ":size") {
 			for _, slaveId := range value {
-				fmt.Println("Asking slave ", slaveId)
+				//fmt.Println("Asking slave ", slaveId)
 				err := pn.slaveDialerMap[slaveId].Call("SlaveNode.Get", &getArgs, &getReply)
-				if err == nil {
+				if err == nil && getReply.Status == 1 {
 					reply.LinksMap[key] = getReply.Value
 					break
 				}

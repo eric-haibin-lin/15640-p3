@@ -61,20 +61,24 @@ func (sn *slaveNode) Append(args *slaverpc.AppendArgs, reply *slaverpc.AppendRep
 		sn.valuesMap[key] = make([][]string, 0)
 	}
 
-	fmt.Println("Slave ", sn.srvId, " appended for key: ", args.Key)
+	//fmt.Println("Slave ", sn.srvId, " appended for key: ", args.Key)
 	sn.valuesMap[key] = append(sn.valuesMap[key], value)
 	return nil
 }
 
 func (sn *slaveNode) Get(args *slaverpc.GetArgs, reply *slaverpc.GetReply) error {
-	fmt.Println("Get invoked on ", sn.srvId)
+	fmt.Println("Get invoked on ", sn.srvId, " for key : ", args.Key)
 	defer fmt.Println("Leaving Get on ", sn.srvId)
 	sn.valuesMapLock.Lock()
 	defer sn.valuesMapLock.Unlock()
 	key := args.Key
-	value := sn.valuesMap[key]
-	fmt.Println("Value found for key", key, ": ", value)
-	reply.Value = value[len(value)-1]
+	value, ok := sn.valuesMap[key]
+	if ok {
+		reply.Status = 1
+		reply.Value = value[len(value)-1]
+	} else {
+		reply.Status = 0
+	}
 	return nil
 }
 
