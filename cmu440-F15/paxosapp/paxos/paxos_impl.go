@@ -13,6 +13,7 @@ import (
 	"net/rpc"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -217,7 +218,7 @@ func NewPaxosNode(myHostPort, monitorHostPort string, hostMap map[int]string, nu
 	} else {
 		// this node has been generated for the first time
 		// set the sizes of all nodes to 0
-		for i := 1; i <= numSlaves; i++ {
+		for i := 0; i < numSlaves; i++ {
 			sizeKey := strconv.Itoa(i)
 			sizeKey = sizeKey + ":size"
 			var sizeSlice [NumCopies]int
@@ -396,7 +397,7 @@ func (pn *paxosNode) PutRank(args *paxosrpc.PutRankArgs, reply *paxosrpc.PutRank
 
 	var idAndSizeList []idAndSize
 	//now select a group of slaves to store this value on
-	for i := 1; i <= pn.numSlaves; i++ {
+	for i := 0; i < pn.numSlaves; i++ {
 		key := strconv.Itoa(i)
 		key = key + ":size"
 		size := (pn.valuesMap[key])[0]
@@ -493,17 +494,21 @@ func (pn *paxosNode) GetLinks(args *paxosrpc.GetLinksArgs, reply *paxosrpc.GetLi
 }
 
 func (pn *paxosNode) GetAllLinks(args *paxosrpc.GetAllLinksArgs, reply *paxosrpc.GetAllLinksReply) error {
+	fmt.Println("GetAllLinks invoked on Node ", pn.srvId)
 	reply.LinksMap = make(map[string][]string)
 	for key, value := range pn.valuesMap {
 		var getArgs slaverpc.GetArgs
 		getArgs.Key = key
 
 		var getReply slaverpc.GetReply
-		for _, slaveId := range value {
-			err := pn.slaveDialerMap[slaveId].Call("SlaveNode.Get", &getArgs, &getReply)
-			if err == nil {
-				reply.LinksMap[key] = getReply.Value
-				break
+		if !strings.HasSuffix(key, ":size") {
+			for _, slaveId := range value {
+				fmt.Println("Asking slave ", slaveId)
+				err := pn.slaveDialerMap[slaveId].Call("SlaveNode.Get", &getArgs, &getReply)
+				if err == nil {
+					reply.LinksMap[key] = getReply.Value
+					break
+				}
 			}
 		}
 	}
@@ -597,7 +602,7 @@ func (pn *paxosNode) Append(args *paxosrpc.AppendArgs, reply *paxosrpc.AppendRep
 
 	var idAndSizeList []idAndSize
 	//now select a group of slaves to store this value on
-	for i := 1; i <= pn.numSlaves; i++ {
+	for i := 0; i < pn.numSlaves; i++ {
 		key := strconv.Itoa(i)
 		key = key + ":size"
 		size := (pn.valuesMap[key])[0]
@@ -920,7 +925,7 @@ func (pn *paxosNode) HeartBeat(hostPort string) {
 		var reply monitorrpc.HeartBeatReply
 		args.Id = pn.srvId
 		args.Type = monitorrpc.Master
-		fmt.Println("Calling MonitorNode.HeartBeat to monitor node")
+		//fmt.Println("Calling MonitorNode.HeartBeat to monitor node")
 		err := pn.monitor.Dialer.Call("MonitorNode.HeartBeat", &args, &reply)
 		if err != nil {
 			fmt.Println(err)

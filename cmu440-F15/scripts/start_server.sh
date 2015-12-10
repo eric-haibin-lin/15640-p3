@@ -121,7 +121,6 @@ echo ${SLAVE_NODE_PID2} >> server_log.txt
 echo ${SLAVE_NODE_PID3} >> server_log.txt
 echo ${SLAVE_NODE_PID4} >> server_log.txt
 echo ${SLAVE_NODE_PID5} >> server_log.txt
-echo ${SLAVE_NODE_PID5} >> server_log.txt
 
 
 # paxos node to kill.
