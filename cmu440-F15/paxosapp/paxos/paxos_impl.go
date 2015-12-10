@@ -8,10 +8,11 @@ import (
 	"github.com/cmu440-F15/paxosapp/rpc/monitorrpc"
 	"github.com/cmu440-F15/paxosapp/rpc/paxosrpc"
 	"github.com/cmu440-F15/paxosapp/rpc/slaverpc"
-	"math/rand"
 	"net"
 	"net/http"
 	"net/rpc"
+	"sort"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -213,6 +214,16 @@ func NewPaxosNode(myHostPort, monitorHostPort string, hostMap map[int]string, nu
 				}
 			}
 		}
+	} else {
+		// this node has been generated for the first time
+		// set the sizes of all nodes to 0
+		for i := 1; i <= numSlaves; i++ {
+			sizeKey := strconv.Itoa(i)
+			sizeKey = sizeKey + ":size"
+			var sizeSlice [NumCopies]int
+			sizeSlice[0] = 0
+			node.valuesMap[sizeKey] = sizeSlice
+		}
 	}
 
 	// now try dialing all slave nodes.. they should ideally already be up
@@ -349,6 +360,11 @@ func wakeMeUpAfter15Seconds(preparechan chan prepReplyAndTimeout, acceptchan cha
 
 }
 
+type idAndSize struct {
+	id   int
+	size int
+}
+
 func (pn *paxosNode) PutRank(args *paxosrpc.PutRankArgs, reply *paxosrpc.PutRankReply) error {
 	fmt.Println("PutRank called on ", pn.myHostPort, " with key = ", args.Key)
 	var putargs slaverpc.PutRankArgs
@@ -378,30 +394,23 @@ func (pn *paxosNode) PutRank(args *paxosrpc.PutRankArgs, reply *paxosrpc.PutRank
 
 	fmt.Println("Got proposal number as ", propNumReply.N)
 
-	var targetSlaves [NumCopies]int
+	var idAndSizeList []idAndSize
 	//now select a group of slaves to store this value on
+	for i := 1; i <= pn.numSlaves; i++ {
+		key := strconv.Itoa(i)
+		key = key + ":size"
+		size := (pn.valuesMap[key])[0]
 
+		ias := idAndSize{id: i, size: size}
+		idAndSizeList = append(idAndSizeList, ias)
+	}
+
+	sort.Sort(SlaveSlice(idAndSizeList))
 	i := 0
-	rand.Seed(time.Now().UnixNano())
-	for i < NumCopies {
-		for {
-			num := rand.Intn(pn.numSlaves)
 
-			var found int
-			found = 0
-			//fmt.Println("The slice is ", targetSlaves)
-			for _, val := range targetSlaves {
-				//fmt.Println("j is ", j)
-				if val == num {
-					found = 1
-					break
-				}
-			}
-			if found == 0 {
-				targetSlaves[i] = num
-				break
-			}
-		}
+	var targetSlaves [NumCopies]int
+	for i < NumCopies {
+		targetSlaves[i] = idAndSizeList[i].id
 		i += 1
 	}
 
@@ -501,12 +510,52 @@ func (pn *paxosNode) GetAllLinks(args *paxosrpc.GetAllLinksArgs, reply *paxosrpc
 	return nil
 }
 
-func updateSize(key string, value []string) error {
-	i := 0
+func (pn *paxosNode) updateSizes(url string, value []string) error {
+	sliceSize := 0
 
 	for _, str := range value {
-		i += len(str)
+		sliceSize += len(str)
 	}
+
+	var propNumArgs paxosrpc.ProposalNumberArgs
+	var propNumReply paxosrpc.ProposalNumberReply
+
+	for _, i := range pn.valuesMap[url] {
+		key := strconv.Itoa(i)
+		key = key + ":size"
+
+		propNumArgs.Key = key
+
+		for {
+			pn.GetNextProposalNumber(&propNumArgs, &propNumReply)
+
+			fmt.Println("For updating size, got next proposal number as ", propNumReply.N)
+
+			var proposeArgs paxosrpc.ProposeArgs
+			var proposeReply paxosrpc.ProposeReply
+
+			var newSizeSlice [NumCopies]int
+			newSizeSlice[0] = (pn.valuesMap[key])[0] + sliceSize
+
+			proposeArgs.N = propNumReply.N
+			proposeArgs.Key = key
+			proposeArgs.V = newSizeSlice
+
+			fmt.Println(pn.myHostPort, " will now propose for key = ", proposeArgs.Key, " and value = ", proposeArgs.V)
+
+			pn.Propose(&proposeArgs, &proposeReply)
+
+			if proposeReply.Status == paxosrpc.OK {
+				fmt.Println("Propose succeeded and the value committed was ", proposeReply.V)
+				break
+			} else if proposeReply.Status == paxosrpc.OtherValueCommitted {
+				fmt.Println("Some other value was committed! Retry")
+			} else {
+				fmt.Println("Paxos rejected! Retry")
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -523,7 +572,9 @@ func (pn *paxosNode) Append(args *paxosrpc.AppendArgs, reply *paxosrpc.AppendRep
 	if ok {
 		fmt.Println("This key already has some slaves. First update the sizes.")
 
-		updateSize(args.Key, args.Value)
+		pn.updateSizes(args.Key, args.Value)
+
+		fmt.Println("Size updation done! Now call Append on all")
 
 		for _, slaveId := range slaveList {
 			err := pn.slaveDialerMap[slaveId].Call("SlaveNode.Append", &appendArgs, &appendReply)
@@ -542,30 +593,25 @@ func (pn *paxosNode) Append(args *paxosrpc.AppendArgs, reply *paxosrpc.AppendRep
 
 	fmt.Println("Got proposal number as ", propNumReply.N)
 
-	var targetSlaves [NumCopies]int
 	//now select a group of slaves to store this value on
 
-	i := 0
-	rand.Seed(time.Now().UnixNano())
-	for i < NumCopies {
-		for {
-			num := rand.Intn(pn.numSlaves)
+	var idAndSizeList []idAndSize
+	//now select a group of slaves to store this value on
+	for i := 1; i <= pn.numSlaves; i++ {
+		key := strconv.Itoa(i)
+		key = key + ":size"
+		size := (pn.valuesMap[key])[0]
 
-			var found int
-			found = 0
-			//fmt.Println("The slice is ", targetSlaves)
-			for _, val := range targetSlaves {
-				//fmt.Println("j is ", j)
-				if val == num {
-					found = 1
-					break
-				}
-			}
-			if found == 0 {
-				targetSlaves[i] = num
-				break
-			}
-		}
+		ias := idAndSize{id: i, size: size}
+		idAndSizeList = append(idAndSizeList, ias)
+	}
+
+	sort.Sort(SlaveSlice(idAndSizeList))
+	i := 0
+
+	var targetSlaves [NumCopies]int
+	for i < NumCopies {
+		targetSlaves[i] = idAndSizeList[i].id
 		i += 1
 	}
 
@@ -588,6 +634,11 @@ func (pn *paxosNode) Append(args *paxosrpc.AppendArgs, reply *paxosrpc.AppendRep
 
 	fmt.Println("Propose succeeded and the value committed was ", proposeReply.V)
 
+	fmt.Println("Now will try to propose size values")
+
+	pn.updateSizes(args.Key, args.Value)
+
+	fmt.Println("Size updation done! Now call Append on all appropriate nodes")
 	for _, slaveId := range proposeReply.V {
 		err := pn.slaveDialerMap[slaveId].Call("SlaveNode.Append", &appendArgs, &appendReply)
 		if err != nil {
@@ -623,10 +674,12 @@ func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.Propose
 	max_v = args.V
 	//max_v = args.V
 
+	reply.Status = paxosrpc.OK
 	for i := 0; i < pn.numNodes; i++ {
 		ret, _ := <-preparechan
 		if ret.timeout == 1 {
 			fmt.Println("Didn't finish prepare stage even after 15 seconds")
+			reply.Status = paxosrpc.Reject
 			return errors.New("Didn't finish prepare stage even after 15 seconds")
 		}
 		if ret.prepReply.Status == paxosrpc.OK {
@@ -635,6 +688,7 @@ func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.Propose
 		if ret.prepReply.N_a != 0 && ret.prepReply.N_a > max_n {
 			max_n = ret.prepReply.N_a
 			max_v = ret.prepReply.V_a
+			reply.Status = paxosrpc.OtherValueCommitted
 		}
 		if okcount >= ((pn.numNodes / 2) + 1) {
 			break
@@ -642,15 +696,9 @@ func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.Propose
 	}
 
 	if !(okcount >= ((pn.numNodes / 2) + 1)) {
+		reply.Status = paxosrpc.Reject
 		return errors.New("Didn't get a majority in prepare phase")
 	}
-
-	//var valueToPropose [NumCopies]int
-	/*if max_n != 0 { //someone suggested a different value
-		valueToPropose = max_v
-	} else {
-		valueToPropose = args.V
-	}*/
 
 	for k, v := range pn.hostMap {
 		fmt.Println("Will call Accept on ", v)
@@ -663,6 +711,7 @@ func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.Propose
 		ret, _ := <-acceptchan
 		if ret.timeout == 1 {
 			fmt.Println("Didn't finish accept stage even after 15 seconds")
+			reply.Status = paxosrpc.Reject
 			return errors.New("Didn't finish accept stage even after 15 seconds")
 		}
 		if ret.accReply.Status == paxosrpc.OK {
@@ -674,6 +723,7 @@ func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.Propose
 	}
 
 	if !(okcount >= ((pn.numNodes / 2) + 1)) {
+		reply.Status = paxosrpc.Reject
 		return errors.New("Didn't get a majority in accept phase")
 	}
 
@@ -687,20 +737,16 @@ func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.Propose
 		_, ok := <-commitchan
 		if !ok {
 			fmt.Println("Didn't finish commit stage even after 15 seconds")
+			reply.Status = paxosrpc.Reject
 			return errors.New("Didn't finish commit stage even after 15 seconds")
 		}
 	}
 
 	//reply.V = max_v
-	reply.Status = paxosrpc.OK
 	reply.V = max_v
 
 	fmt.Println(pn.myHostPort, " has successfully proposed the set ", max_v)
 	return nil
-
-	// so a group of 3 slaves has been selected to store the data
-	// now actually store the data
-
 }
 
 /*func (pn *paxosNode) GetValue(args *paxosrpc.GetValueArgs, reply *paxosrpc.GetValueReply) error {
@@ -883,104 +929,16 @@ func (pn *paxosNode) HeartBeat(hostPort string) {
 	}
 }
 
-/*
-const (
-	OK     Status = iota + 1 // Paxos replied OK
-	Reject                   // Paxos rejected the message
-)
+type SlaveSlice []idAndSize
 
-const (
-	KeyFound    Lookup = iota + 1 // GetValue key found
-	KeyNotFound                   // GetValue key not found
-)
-
-type ProposalNumberArgs struct {
-	Key string
+func (slice SlaveSlice) Len() int {
+	return len(slice)
 }
 
-type ProposalNumberReply struct {
-	N int
+func (slice SlaveSlice) Less(i, j int) bool {
+	return slice[i].size < slice[j].size
 }
 
-type ProposeArgs struct {
-	N   int // Proposal number
-	Key string
-	V   []string
+func (slice SlaveSlice) Swap(i, j int) {
+	slice[i], slice[j] = slice[j], slice[i]
 }
-
-type ProposeReply struct {
-	Status Status
-}
-
-type PrepareArgs struct {
-	Key string
-	N   int
-}
-
-type PrepareReply struct {
-	Status Status
-	N_a    int            // Highest proposal number accepted
-	V_a    [NumCopies]int // Corresponding value
-}
-
-type AcceptArgs struct {
-	Key string
-	N   int
-	V   [NumCopies]int
-}
-
-type AcceptReply struct {
-	Status Status
-}
-
-type CommitArgs struct {
-	Key string
-	V   [NumCopies]int
-}
-
-type CommitReply struct {
-	// No content, no reply necessary
-}
-
-type ReplaceServerArgs struct {
-	SrvID    int // Server being replaced
-	Hostport string
-}
-
-type ReplaceServerReply struct {
-	// No content necessary
-}
-
-type ReplaceCatchupArgs struct {
-	// No content necessary
-}
-
-type ReplaceCatchupReply struct {
-	Data []byte
-}
-
-type GetAllLinksArgs struct {
-	// No content necessary, just get the whole damn thing lol
-}
-
-type GetAllLinksReply struct {
-	LinksMap map[string][]string
-}
-
-type GetLinksArgs struct {
-	Key string
-}
-
-type GetLinksReply struct {
-	Value []string
-}
-
-type AppendArgs struct {
-	Key   string
-	Value []string
-}
-
-type AppendReply struct {
-	//not sure what to keep here
-}
-*/

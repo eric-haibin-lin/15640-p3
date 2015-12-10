@@ -14,6 +14,7 @@ const (
 const (
 	OK     Status = iota + 1 // Paxos replied OK
 	Reject                   // Paxos rejected the message
+	OtherValueCommitted
 )
 
 const (

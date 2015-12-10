@@ -10,7 +10,7 @@ import (
 )
 
 type slaveNode struct {
-	valuesMap     map[string][]string
+	valuesMap     map[string][][]string
 	ranksMap      map[string]float64
 	valuesMapLock *sync.Mutex
 	ranksMapLock  *sync.Mutex
@@ -22,7 +22,7 @@ func NewSlaveNode(myHostPort string, srvId int) (SlaveNode, error) {
 	fmt.Println("NewSlaveNode invoked on", srvId)
 	var a slaverpc.RemoteSlaveNode
 	node := slaveNode{}
-	node.valuesMap = make(map[string][]string)
+	node.valuesMap = make(map[string][][]string)
 	node.ranksMap = make(map[string]float64)
 	node.valuesMapLock = &sync.Mutex{}
 	node.ranksMapLock = &sync.Mutex{}
@@ -58,11 +58,11 @@ func (sn *slaveNode) Append(args *slaverpc.AppendArgs, reply *slaverpc.AppendRep
 
 	if !ok {
 		fmt.Println("Didn't find anything on slave ", sn.srvId, ", so creating a new slice")
-		sn.valuesMap[key] = make([]string, 0)
+		sn.valuesMap[key] = make([][]string, 0)
 	}
 
 	fmt.Println("Slave ", sn.srvId, " appended for key: ", args.Key)
-	sn.valuesMap[key] = append(sn.valuesMap[key], value...)
+	sn.valuesMap[key] = append(sn.valuesMap[key], value)
 	return nil
 }
 
@@ -74,7 +74,7 @@ func (sn *slaveNode) Get(args *slaverpc.GetArgs, reply *slaverpc.GetReply) error
 	key := args.Key
 	value := sn.valuesMap[key]
 	fmt.Println("Value found for key", key, ": ", value)
-	reply.Value = value
+	reply.Value = value[len(value)-1]
 	return nil
 }
 
