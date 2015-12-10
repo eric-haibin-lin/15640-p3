@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/cmu440-F15/paxosapp/client"
+	"github.com/cmu440-F15/paxosapp/common"
 	"log"
 	"strings"
 )
@@ -35,23 +36,22 @@ func main() {
 		log.Fatalln("Failed to create client node:", err)
 	}
 
-	absoluteUrl := *url
-	if !strings.Contains(*url, "http://") && !strings.Contains(*url, "https://") {
-		absoluteUrl = "http://" + *url
-	}
-
 	if *opt == "crawl" {
 		fmt.Println("crunner invokes Crawl on client")
 		var args client.CrawlArgs
 		var reply client.CrawlReply
+		absoluteUrl := *url
+		if !strings.Contains(*url, "http://") && !strings.Contains(*url, "https://") {
+			absoluteUrl = "http://" + *url
+		}
 		args.RootUrl = absoluteUrl
 		args.NumPages = *num
 		cli.Crawl(&args, &reply)
-
+		
 	} else if *opt == "getlink" {
 		fmt.Println("crunner invokes GetLink on client")
 		var getLinkArgs client.GetLinksArgs
-		getLinkArgs.Url = absoluteUrl
+		getLinkArgs.Url = common.RemoveHttp(*url)
 		var getLinkReply client.GetLinksReply
 		cli.GetLinks(&getLinkArgs, &getLinkReply)
 
@@ -63,11 +63,9 @@ func main() {
 
 	} else if *opt == "getrank" {
 		fmt.Println("crunner invokes GetRank on client")
-		fmt.Println("crunner invokes GetLink on client")
 		var getRankArgs client.GetRankArgs
-		getRankArgs.Url = absoluteUrl
+		getRankArgs.Url = common.RemoveHttp(*url)
 		var getRankReply client.GetRankReply
 		cli.GetRank(&getRankArgs, &getRankReply)
-
 	}
 }
