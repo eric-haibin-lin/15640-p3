@@ -173,9 +173,9 @@ func NewPaxosNode(myHostPort string, hostMap map[int]string, numNodes, srvId, nu
 		json.Unmarshal(reply.Data, &f)
 		node.valuesMapLock.Lock()
 		//Convert []interface{} to [numCopies]int by iterating the interface{} slice
-		for key, arr := range  f.(map[string]interface{}){
+		for key, arr := range f.(map[string]interface{}) {
 			slices := arr.([]interface{})
-			var copies [NumCopies]int	
+			var copies [NumCopies]int
 			for index, value := range slices {
 				fmt.Println(index, int(value.(float64)))
 				copies[index] = int(value.(float64))
@@ -496,6 +496,15 @@ func (pn *paxosNode) GetAllLinks(args *paxosrpc.GetAllLinksArgs, reply *paxosrpc
 	return nil
 }
 
+func updateSize(key string, value []string) error {
+	i := 0
+
+	for _, str := range value {
+		i += len(str)
+	}
+	return nil
+}
+
 func (pn *paxosNode) Append(args *paxosrpc.AppendArgs, reply *paxosrpc.AppendReply) error {
 
 	fmt.Println("Append called on ", pn.myHostPort, " with key = ", args.Key)
@@ -507,7 +516,9 @@ func (pn *paxosNode) Append(args *paxosrpc.AppendArgs, reply *paxosrpc.AppendRep
 	slaveList, ok := pn.valuesMap[args.Key]
 
 	if ok {
-		fmt.Println("This key already has some slaves. Calling append on them")
+		fmt.Println("This key already has some slaves. First update the sizes.")
+
+		updateSize(args.Key, args.Value)
 
 		for _, slaveId := range slaveList {
 			err := pn.slaveDialerMap[slaveId].Call("SlaveNode.Append", &appendArgs, &appendReply)
