@@ -4,18 +4,18 @@ if [ "$#" == "0" ]; then
     echo "This script creates a client runner connected with master server. The usage is as follows:"
     echo "crawl - crawl [number_of_pages] webpages from the internet and save to ScrapeStore, starting from [root_url]
     runclient.sh crawl [root_url] [number_of_pages] 
-    runclient.sh crawl http://news.google.com 10 
+    runclient.sh crawl news.google.com 10
     "
     echo "getlink - retrieve all links contained in [target_url] crawled previously
     runclient.sh getlink [target_url]
-    runclient.sh getlink http://news.google.com
+    runclient.sh getlink news.google.com
     "
     echo "pagerank - run pagerank algorithm with the webpages crawled
     runclient.sh pagerank
     "
     echo "getrank - run pagerank algorithm with the webpages crawled
     runclient.sh getrank [target_url]
-    runclient.sh getrank http://news.google.com
+    runclient.sh getrank news.google.com
     "
     exit 1
 fi 
