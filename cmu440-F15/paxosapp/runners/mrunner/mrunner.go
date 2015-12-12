@@ -4,8 +4,8 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"github.com/cmu440-F15/paxosapp/monitor"
+	"io/ioutil"
 	"log"
 	"strings"
 )
@@ -24,17 +24,14 @@ func init() {
 
 func main() {
 	flag.Parse()
-	defer fmt.Println("Leaving main")
-	fmt.Println("Before")
+	log.SetOutput(ioutil.Discard)
 	myHostPort := "localhost:" + *port
 	masterHostPort := strings.Split(*masterPort, ",")
-	fmt.Println("mrunner creates monitor node on", myHostPort, "with master on ", *masterPort)
-
-	// Create and start the Paxos Node.
+	log.Println("mrunner creates monitor node on", myHostPort, "with master on ", *masterPort)
+	// Create and start the monitor Node.
 	_, err := monitor.NewMonitorNode(myHostPort, masterHostPort)
 	if err != nil {
 		log.Fatalln("Failed to create monitor node:", err)
 	}
-
 	select {}
 }

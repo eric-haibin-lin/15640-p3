@@ -8,6 +8,8 @@ import (
 	"github.com/cmu440-F15/paxosapp/common"
 	"github.com/cmu440-F15/paxosapp/pagerank"
 	"github.com/cmu440-F15/paxosapp/rpc/paxosrpc"
+	"io/ioutil"
+	"log"
 	"math/rand"
 	"net/http"
 	"net/rpc"
@@ -17,8 +19,8 @@ import (
 type Status int
 
 const (
-	OK   Status = iota + 1 // Paxos replied OK
-	Fail                   // Paxos rejected the message
+	OK   Status = iota + 1 // Status OK
+	Fail                   // Status Failure
 )
 
 const (
@@ -27,11 +29,13 @@ const (
 )
 
 type clientNode struct {
+	//the connection with the master node
 	conn       common.Conn
 	myHostPort string
 	//a channel to receive all url's relationship before writing to CrawlStore
 	linkRelationChan chan linkRelation
-	allLinksChan     chan string
+	//a channel to receive all url's
+	allLinksChan chan string
 	//a channel to receive all url's to crawl next time
 	nextLinkChan chan string
 	//a map to indicate whether the link has been crawled or not
@@ -41,17 +45,18 @@ type clientNode struct {
 	//a mapping between the url and its id for pagerank calculation
 	idMap  map[string]int
 	urlMap map[int]string
+	//the next id for next url
 	nextId int
 }
 
 type linkRelation struct {
-	follower string
-	followee []string
+	follower string   //The root url
+	followee []string //The urls followed by root url
 }
 
 type CrawlArgs struct {
-	RootUrl  string
-	NumPages int
+	RootUrl  string //The root url where crawling started
+	NumPages int    //The number of web pages to crawl
 }
 
 type CrawlReply struct {
@@ -59,7 +64,7 @@ type CrawlReply struct {
 }
 
 type GetLinksArgs struct {
-	Url string
+	Url string //The Url requested
 }
 
 type GetLinksReply struct {
@@ -67,11 +72,11 @@ type GetLinksReply struct {
 }
 
 type GetRankArgs struct {
-	Url string
+	Url string //The Url requested
 }
 
 type GetRankReply struct {
-	Value float64
+	Value float64 //The rank
 }
 
 type PageRankArgs struct {
@@ -85,12 +90,11 @@ type PageRankReply struct {
 // NewClientNode creates a new ClientNode. This function should return only when
 // it successfully dials to a master node, and should return a non-nil error if the
 // master node could not be reached.
-//
 // masterHostPort is the list of hostnames and port numbers to master nodes
 func NewClientNode(myHostPort string, masterHostPort []string) (ClientNode, error) {
-	defer fmt.Println("Leaving NewClientNode")
-	fmt.Println("myhostport is", myHostPort, ", hostPort of masterNode to connect is", masterHostPort)
-
+	log.SetOutput(ioutil.Discard)
+	defer log.Println("Leaving NewClientNode")
+	log.Println("myhostport is", myHostPort, ", hostPort of masterNode to connect is", masterHostPort)
 	var a ClientNode
 	//Pick a master node and dial on it
 	index := rand.New(rand.NewSource(time.Now().UnixNano())).Intn(len(masterHostPort))
@@ -116,7 +120,6 @@ func NewClientNode(myHostPort string, masterHostPort []string) (ClientNode, erro
 	node.visited = make(map[string]bool)
 	node.idMap = make(map[string]int)
 	node.urlMap = make(map[int]string)
-
 	// Initialize the http client for the crawler
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{
@@ -124,21 +127,18 @@ func NewClientNode(myHostPort string, masterHostPort []string) (ClientNode, erro
 		},
 	}
 	node.httpClient = http.Client{Transport: transport}
-
 	a = &node
 	return a, nil
 }
 
 // Crawls the internet with given root url until it reaches the number of pages sepecified.
 func (cn *clientNode) Crawl(args *CrawlArgs, reply *CrawlReply) error {
-	defer fmt.Println("Leavin Crawl on client", cn.myHostPort)
-	fmt.Println("Crawl invoked on ", cn.myHostPort)
-
+	defer log.Println("Leavin Crawl on client", cn.myHostPort)
+	log.Println("Crawl invoked on ", cn.myHostPort)
 	//set root url as the starting point of crawling
 	rootUrl := args.RootUrl
 	go func() { cn.allLinksChan <- rootUrl }()
 	go cn.checkVisited()
-
 	//start to crawl and count the number of pages crawled!
 	count := 0
 	for {
@@ -154,9 +154,9 @@ func (cn *clientNode) Crawl(args *CrawlArgs, reply *CrawlReply) error {
 					appendArgs.Key = rel.follower
 					appendArgs.Value = rel.followee
 					var appendReply paxosrpc.AppendReply
-					fmt.Println("Calling PaxosNode.Append")
+					log.Println("Calling PaxosNode.Append")
 					for _, v := range appendArgs.Value {
-						fmt.Println("Writing", v, "with key", appendArgs.Key)
+						log.Println("Writing", v, "with key", appendArgs.Key)
 					}
 					cn.conn.Dialer.Call("PaxosNode.Append", &appendArgs, &appendReply)
 				}
@@ -172,18 +172,17 @@ func (cn *clientNode) Crawl(args *CrawlArgs, reply *CrawlReply) error {
 // pagerank algorithm on them. It also saves the page rank of each url back to CrawlStore
 // for further references
 func (cn *clientNode) RunPageRank(args *PageRankArgs, reply *PageRankReply) error {
-	fmt.Println("RunPageRank invoked on ", cn.myHostPort)
-
+	log.Println("RunPageRank invoked on ", cn.myHostPort)
 	//Get all page relationships from CrawlStore
 	var getAllLinksArgs paxosrpc.GetAllLinksArgs
 	var getAllLinksReply paxosrpc.GetAllLinksReply
-	fmt.Println("Invoking PaxosNode.GetAllLinks on", cn.conn.HostPort)
+	log.Println("Invoking PaxosNode.GetAllLinks on", cn.conn.HostPort)
 	err := cn.conn.Dialer.Call("PaxosNode.GetAllLinks", &getAllLinksArgs, &getAllLinksReply)
 	if err != nil {
 		fmt.Println(err)
 	}
 
-	fmt.Println("Calculating page rank on all links...")
+	log.Println("Calculating page rank on all links...")
 	//calculate page rank!
 	pageRankEngine := pagerank.New()
 	for k, list := range getAllLinksReply.LinksMap {
@@ -195,7 +194,7 @@ func (cn *clientNode) RunPageRank(args *PageRankArgs, reply *PageRankReply) erro
 	}
 	//Save all page rank results to CrawlStore
 	pageRankEngine.Rank(followProbability, tolerance, func(label int, rank float64) {
-		fmt.Println(cn.urlMap[label], rank*100)
+		log.Println(cn.urlMap[label], rank*100)
 		var putRankArgs paxosrpc.PutRankArgs
 		putRankArgs.Key = cn.urlMap[label]
 		putRankArgs.Value = rank * 100
@@ -222,7 +221,7 @@ func (cn *clientNode) getId(url string) int {
 
 // GetRank fetches the page rank for the requested url from CrawlStore
 func (cn *clientNode) GetRank(args *GetRankArgs, reply *GetRankReply) error {
-	fmt.Println("GetRank invoked on ", cn.myHostPort)
+	log.Println("GetRank invoked on ", cn.myHostPort)
 	var rankArgs paxosrpc.GetRankArgs
 	rankArgs.Key = args.Url
 	var rankReply paxosrpc.GetRankReply
@@ -231,32 +230,32 @@ func (cn *clientNode) GetRank(args *GetRankArgs, reply *GetRankReply) error {
 		fmt.Println(err)
 		return err
 	}
-	fmt.Println("GetRank returns value:", rankReply.Value)
+	log.Println("GetRank returns value:", rankReply.Value)
 	reply.Value = rankReply.Value
 	return nil
 }
 
-// GetLinks fetches all links contained in the given link (if any)
+// GetLinks fetches all links contained in the given link (if any) from CrawlStore
 func (cn *clientNode) GetLinks(args *GetLinksArgs, reply *GetLinksReply) error {
-	fmt.Println("GetLink invoked on ", cn.myHostPort)
+	log.Println("GetLink invoked on ", cn.myHostPort)
 	var linksArgs paxosrpc.GetLinksArgs
 	linksArgs.Key = args.Url
 	var linksReply paxosrpc.GetLinksReply
-	fmt.Println("Calling PaxosNode.GetLinks with key", linksArgs.Key)
+	log.Println("Calling PaxosNode.GetLinks with key", linksArgs.Key)
 	err := cn.conn.Dialer.Call("PaxosNode.GetLinks", &linksArgs, &linksReply)
 	if err != nil {
 		fmt.Println(err)
 		return err
 	}
-	fmt.Println("GetLinks returns list:")
+	log.Println("GetLinks returns list:")
 	for _, v := range linksReply.Value {
-		fmt.Println(v)
+		log.Println(v)
 	}
 	reply.List = linksReply.Value
 	return nil
 }
 
-// filterVisited checks if all links crawled are visited. If not, push it to the
+// checkVisited checks if all links crawled are visited. If not, push it to the
 // nextLinksChan to start crawling from there
 func (cn *clientNode) checkVisited() {
 	for val := range cn.allLinksChan {
@@ -267,18 +266,20 @@ func (cn *clientNode) checkVisited() {
 	}
 }
 
-// doCrawl fetches the webpage and collects the links contained in this webpage
+// doCrawl fetches the webpage and collects the links contained in this webpage.
+// It returns a linkRelation which contains the following relationship of a root url
+// and all links this root url points to.
 func (cn *clientNode) doCrawl(uri string) (linkRelation, error) {
 	var rel linkRelation
 	rel.follower = common.RemoveHttp(uri)
 	rel.followee = make([]string, 0)
 	resp, err := cn.httpClient.Get(uri)
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 		return rel, errors.New("Failed to fetch page" + uri)
 	}
 	defer resp.Body.Close()
-	fmt.Println("fetched ", uri)
+	fmt.Println(uri)
 	links := collectlinks.All(resp.Body)
 	for _, link := range links {
 		absolute := common.GetAbsoluteUrl(link, uri)
@@ -288,10 +289,5 @@ func (cn *clientNode) doCrawl(uri string) (linkRelation, error) {
 			rel.followee = append(rel.followee, removeHttps)
 		}
 	}
-	/*fmt.Print("New link relation: ", rel.follower, " ========> ")
-	for _, followee := range rel.followee {
-		fmt.Print(followee, "")
-	}
-	fmt.Println()*/
 	return rel, nil
 }
