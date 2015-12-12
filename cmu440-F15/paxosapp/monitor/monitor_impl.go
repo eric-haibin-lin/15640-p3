@@ -10,95 +10,92 @@ import (
 	"os"
 	"strconv"
 	"time"
+	"log"
+	 
 )
 
 type monitorNode struct {
+	//the host port information of all master nodes
 	masterHostPortMap  map[int]string
-	slaveHostPortMap   map[int]string
+	//the heart beat information of all master nodes
 	masterHeartBeatMap map[int]int
-	//slaveHeartBeatMap  map[int]int
+	//the host port of the monitor itself
 	myHostPort string
 }
 
+// NewMonitorNode creates a new monitor node. The monitor node has the host port 
+// information of all master nodes. It also allows heartbeat rpc calls from master node 
+// to report that the master node is not down. It will not return until the monitor
+// node can successfully handle rpc calls from masters
 func NewMonitorNode(myHostPort string, masterHostPort []string) (MonitorNode, error) {
-	fmt.Println("myhostport is ", myHostPort, "masterHostPort is ", masterHostPort)
-	defer fmt.Println("Leaving NewMonitorNode")
+	log.SetOutput(ioutil.Discard)
+	log.Println("myhostport is ", myHostPort, "masterHostPort is ", masterHostPort)
+	defer log.Println("Leaving NewMonitorNode")
 	var a monitorrpc.RemoteMonitorNode
 	node := monitorNode{}
 	node.masterHostPortMap = make(map[int]string)
-	node.slaveHostPortMap = make(map[int]string)
 	node.masterHeartBeatMap = make(map[int]int)
-	//node.slaveHeartBeatMap = make(map[int]int)
 	node.myHostPort = myHostPort
-
 	for id := 0; id < len(masterHostPort); id++ {
 		node.masterHostPortMap[id] = masterHostPort[id]
 	}
-	/*for id := 0; id < len(slaveHostPort); id++ {
-		node.slaveHostPortMap[id] = slaveHostPort[id]
-	}*/
-
+	//listen to monitor hostport and start to serve RPC's 
 	listener, err := net.Listen("tcp", myHostPort)
 	if err != nil {
 		return nil, err
 	}
-
 	a = &node
-
 	err = rpc.RegisterName("MonitorNode", monitorrpc.Wrap(a))
 	if err != nil {
 		return nil, err
 	}
-
 	rpc.HandleHTTP()
 	go http.Serve(listener, nil)
 	go (&node).CheckHealth()
-
 	return a, nil
 }
 
+
+// HeartBeat RPC is for master nodes to contact monitor server. The monitor server 
+// mark down the master's id for liveness check 
 func (sn *monitorNode) HeartBeat(args *monitorrpc.HeartBeatArgs, reply *monitorrpc.HeartBeatReply) error {
 	if args.Type == monitorrpc.Master {
 		sn.masterHeartBeatMap[args.Id] += 1
-		fmt.Println("Received heartbeat from server", args.Id)
+		log.Println("Received heartbeat from server", args.Id)
 	}
-	/*if args.Type == monitorrpc.Slave {
-		sn.slaveHeartBeatMap[args.Id] += 1
-	}*/
 	return nil
 }
 
+
+// CheckHealth count the number of heartbeats from every master node at some fixed interval.
+// If some master node doesn't heartbeat monitor, their id's will be recorded and restarted by 
+// the monitor.
 func (sn *monitorNode) CheckHealth() {
 	time.Sleep(time.Second * 8)
-	fmt.Println("Start to check the health of Master nodes...")
+	fmt.Println("master nodes health monitor is started")
 	for {
+		//Check all master nodes' heartbeat 
 		for index, _ := range sn.masterHostPortMap {
 			_, ok := sn.masterHeartBeatMap[index]
 			if !ok {
-				//Master is down, replace with new master node
+				//Not receiving heartbeat indicates that this master is down, 
+				//replace with new master node on the same port 
 				fmt.Println("Master ", index, "is down. Replacing this node..")
 				filePath := os.Getenv("GOPATH") + "/src/github.com/cmu440-F15/scripts/server_id.txt"
 				idToReplace := []byte(strconv.Itoa(index) + "\n")
 				ioutil.WriteFile(filePath, idToReplace, 0666)
 				f, err := os.OpenFile(filePath, os.O_RDWR|os.O_APPEND, 0660)
 				if err != nil {
-					fmt.Println(err)
+					log.Println(err)
 				}
 				f.Write(idToReplace)
 				f.Sync()
 				f.Close()
 			} else {
+				//Received heartbeat from this master before. Clear the entry for next round
 				delete(sn.masterHeartBeatMap, index)
 			}
 		}
-		/*for index, _ := range sn.masterHostPortMap {
-			_, ok := sn.slaveHeartBeatMap[index]
-			if !ok {
-				//Slave is down, notify the master node
-			} else {
-				delete(sn.slaveHeartBeatMap, index)
-			}
-		}*/
 		time.Sleep(time.Second * 6)
 	}
 }
