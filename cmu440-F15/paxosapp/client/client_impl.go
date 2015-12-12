@@ -32,7 +32,7 @@ type clientNode struct {
 	//the connection with the master node
 	conn       common.Conn
 	myHostPort string
-	//a channel to receive all url's relationship before writing to CrawlStore
+	//a channel to receive all url's relationship before writing to ScrapeStore
 	linkRelationChan chan linkRelation
 	//a channel to receive all url's
 	allLinksChan chan string
@@ -149,7 +149,7 @@ func (cn *clientNode) Crawl(args *CrawlArgs, reply *CrawlReply) error {
 				rel, err := cn.doCrawl(uri)
 				if err == nil {
 					count += 1
-					//Writing the crawl result to CrawlStore
+					//Writing the crawl result to ScrapeStore
 					var appendArgs paxosrpc.AppendArgs
 					appendArgs.Key = rel.follower
 					appendArgs.Value = rel.followee
@@ -168,12 +168,12 @@ func (cn *clientNode) Crawl(args *CrawlArgs, reply *CrawlReply) error {
 	return nil
 }
 
-// RunRageRank retrieves all the crawled link relationships from CrawlStore and runs
-// pagerank algorithm on them. It also saves the page rank of each url back to CrawlStore
+// RunRageRank retrieves all the crawled link relationships from ScrapeStore and runs
+// pagerank algorithm on them. It also saves the page rank of each url back to ScrapeStore
 // for further references
 func (cn *clientNode) RunPageRank(args *PageRankArgs, reply *PageRankReply) error {
 	log.Println("RunPageRank invoked on ", cn.myHostPort)
-	//Get all page relationships from CrawlStore
+	//Get all page relationships from ScrapeStore
 	var getAllLinksArgs paxosrpc.GetAllLinksArgs
 	var getAllLinksReply paxosrpc.GetAllLinksReply
 	log.Println("Invoking PaxosNode.GetAllLinks on", cn.conn.HostPort)
@@ -192,7 +192,7 @@ func (cn *clientNode) RunPageRank(args *PageRankArgs, reply *PageRankReply) erro
 			pageRankEngine.Link(followerId, followeeId)
 		}
 	}
-	//Save all page rank results to CrawlStore
+	//Save all page rank results to ScrapeStore
 	pageRankEngine.Rank(followProbability, tolerance, func(label int, rank float64) {
 		log.Println(cn.urlMap[label], rank*100)
 		var putRankArgs paxosrpc.PutRankArgs
@@ -219,7 +219,7 @@ func (cn *clientNode) getId(url string) int {
 	return id
 }
 
-// GetRank fetches the page rank for the requested url from CrawlStore
+// GetRank fetches the page rank for the requested url from ScrapeStore
 func (cn *clientNode) GetRank(args *GetRankArgs, reply *GetRankReply) error {
 	log.Println("GetRank invoked on ", cn.myHostPort)
 	var rankArgs paxosrpc.GetRankArgs
@@ -235,7 +235,7 @@ func (cn *clientNode) GetRank(args *GetRankArgs, reply *GetRankReply) error {
 	return nil
 }
 
-// GetLinks fetches all links contained in the given link (if any) from CrawlStore
+// GetLinks fetches all links contained in the given link (if any) from ScrapeStore
 func (cn *clientNode) GetLinks(args *GetLinksArgs, reply *GetLinksReply) error {
 	log.Println("GetLink invoked on ", cn.myHostPort)
 	var linksArgs paxosrpc.GetLinksArgs
