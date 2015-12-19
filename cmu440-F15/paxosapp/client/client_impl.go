@@ -194,7 +194,7 @@ func (cn *clientNode) RunPageRank(args *PageRankArgs, reply *PageRankReply) erro
 	}
 	//Save all page rank results to ScrapeStore
 	pageRankEngine.Rank(followProbability, tolerance, func(label int, rank float64) {
-		log.Println(cn.urlMap[label], rank*100)
+		fmt.Println(cn.urlMap[label], rank*100)
 		var putRankArgs paxosrpc.PutRankArgs
 		putRankArgs.Key = cn.urlMap[label]
 		putRankArgs.Value = rank * 100
@@ -230,7 +230,7 @@ func (cn *clientNode) GetRank(args *GetRankArgs, reply *GetRankReply) error {
 		fmt.Println(err)
 		return err
 	}
-	log.Println("GetRank returns value:", rankReply.Value)
+	fmt.Println("GetRank returns value:", rankReply.Value)
 	reply.Value = rankReply.Value
 	return nil
 }
@@ -247,9 +247,9 @@ func (cn *clientNode) GetLinks(args *GetLinksArgs, reply *GetLinksReply) error {
 		fmt.Println(err)
 		return err
 	}
-	log.Println("GetLinks returns list:")
+	fmt.Println("GetLinks returns list:")
 	for _, v := range linksReply.Value {
-		log.Println(v)
+		fmt.Println(v)
 	}
 	reply.List = linksReply.Value
 	return nil
