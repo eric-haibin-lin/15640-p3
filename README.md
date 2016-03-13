@@ -14,7 +14,11 @@ This system was built as part of the 15­640 Distributed Systems course at Carne
 Fall 2015 by Haibin Lin (haibinl) and Abhishek Joshi (abj1). This report delineates the design choices and
 implementation details of ScrapeStore.
 
-For more information, see report/application.pdf
+For more information, see [documentation](https://github.com/eric-haibin-lin/ScrapeStore/blob/master/cmu440-F15/report/application.pdf). 
+
+## System Architecture
+
+<img src="cmu440-F15/report/archi.png" width="540px" height="360px" />
 
 ## Starter Code
 
