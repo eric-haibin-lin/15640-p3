@@ -16,9 +16,9 @@ implementation details of ScrapeStore.
 
 For more information, see [documentation](https://github.com/eric-haibin-lin/ScrapeStore/blob/master/cmu440-F15/report/application.pdf). 
 
-## System Architecture
+## System Components
 
-<img src="cmu440-F15/report/archi.png" width="540px" height="360px" />
+<img src="cmu440-F15/report/archi.png" width="540px" height="300px" />
 
 ## Starter Code
 
