@@ -1,8 +1,20 @@
 # ScrapeStore
 
-This repository contains the starter code for project 3 (15-440, Fall 2015).
-These instructions assume you have set your `GOPATH` to point to the repository's
-root `p3/` directory.
+ScrapeStore is a distributed storage system for storing web­scraped data, and analyzing the data for
+obtaining Page Ranks of URLs using the stored URL mappings. ScrapeStore offers high reliability and
+fault tolerance by using redundancy, much like the philosophy behind popular distributed storage systems
+like GFS and HDFS. At the heart of ScrapeStore is a collection of metadata servers, which, together, act
+as a replicated metadata store. The actual storage sites are managed in the form of many more slave
+nodes, usually much much higher in number than the master nodes. The master/paxos servers synchronize
+all their metadata using the Paxos algorithm. The metadata is mainly of two types: 1) mappings of which
+key’s data is present on which collection of slaves, and 2) the amount of data stored on each slave node.
+The data stored on the slaves is also N­way replicated, where the N is tunable based on the requirements.
+
+This system was built as part of the 15­640 Distributed Systems course at Carnegie Mellon University in
+Fall 2015 by Haibin Lin (haibinl) and Abhishek Joshi (abj1). This report delineates the design choices and
+implementation details of ScrapeStore.
+
+For more information, see report/application.pdf
 
 ## Starter Code
 
